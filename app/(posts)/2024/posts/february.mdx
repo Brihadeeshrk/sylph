@@ -1,0 +1,620 @@
+---
+title: "february"
+author: 
+  name: "brihadeesh"
+  link: "https://github.com/Brihadeeshrk"
+  handle: "Brihadeeshrk"
+time:
+  created: "2024-02-25T20:54:05.150Z"
+  updated: "2024-11-16T18:23:32.447Z"
+---
+
+
+## Beginning
+
+I stepped into February with the ambition to complete a few courses, one of which being [Micro-Frontends](https://www.udemy.com/certificate/UC-2b3267d6-75f0-4d3f-ada0-1aae9fa77e97/), and the other Next js, but specifically the new App router.
+
+I truly had no idea the term `microfrontend` was even a thing.
+I'd heard of `microservices` but microfrontend sounded intriguing so I thought i'd try explore a bit and see if its something that would interest me.
+in all of the projects that i've worked on, i haven't really felt the need to implement a microfrontend architecture but i understand why its super important and i also understand how it could
+save time and effort.
+
+for those unfamiliar with microfrontend, here's a small section to help you get upto speed _(beginner-friendly)_
+
+### Microfrontend
+
+_throughout this example, `microfrontend` will be abbreviated as MFE or mfe_
+
+to understand the need for mfes, let me give you an example. you're currently building an ecommerce website that has these 2 components, a product list component and a cart component.
+let's say we take up the **"CLASSIC"** approach and build both of these pages in one application, we then have a Single Page Application (SPA) right?
+
+don't think too much on which framework/platform you'd built it with, for now assume its plain html.
+
+now, within these pages, we may have 100s of components, sections, input-fields etc.. which would make it very tedious to maintain and implement in **1** codebase, and this is known as a
+**MONOLITHIC** application.
+
+if we had to convert this "CLASSIC" application into a mfe application, how would we do it? we'd make the product-list a mfe, and the cart a mfe. now, we have **2** SEPARATE codebases
+which makes everything a bit more easy to manage and implement.
+But, you may think, when i tap on the "Add to Cart" button in the product-list mfe, how will that trigger a change in the cart component if they are separate?
+
+This is where we use APIs. there will be NO direct communication between 2 mfes. so in this scenario how would this pan out? in the product-list mfe, upon tapping the "Add to Cart" button
+we'd have to call an api that manages that users cart and tell it to add this too.
+
+and in the cart mfe, we'd have to call an api to fetch the items in the users cart and also an api to manage this cart incase the user wants to increase the qty, remove the item etc..
+
+_but, again, why use MFE?_
+
+- one gigantic benefit we get is that these applications are now 2 separate apps.
+  now, two different teams can work on these applns side-by-side in isolation since they have no dependency amongst each other. these teams, now working independently can choose whatever development
+  style they want. you want to use React for the product-list? GO FOR IT. Does the other team want to use Vue for the cart? SURE!
+- this way, if one team makes a breaking change, the other team is not affected.
+- and this also makes the project easy to manage and understand
+
+now that we have 2mfes, how do we show them on the browser? using a THIRD mfe known as a **CONTAINER**
+
+a container decides when and where to show the mfes we've created.
+
+_thats it for a small intro into microfrontends_
+
+### Intriguing concepts
+
+some aspects of this learning journey i found really intriguing are
+
+- built time integration
+- run time integration
+- server side integration
+- webpack
+
+_to know more on what these 3 are, [click here](https://2024.briha.xyz/articles/microfrontends#understanding-build-time-integration) to read my article_
+
+here are the topics i made notes and learnt about in this course:
+
+- microfrontends, and their need in a modern web application
+- understanding integrations
+- webpack
+  - webpack dev server
+  - implementing moduleFederationPlugin
+  - understanding moduleFed config options
+  - sharing dependencies among remote apps
+- implementing a CI/CD pipeline with Github actions
+- how to develop with a production style workflow
+- issues with styling when it comes to microfrontend apps
+- working with Navigation in a microfrontend apps
+  - react router
+  - history router
+  - browser router
+  - memory router
+  - hash router (only definition and differences)
+  - separation of routing options in dev and prod (browser in dev and memory in prod for remote apps)
+- communication between microfrontend apps
+- authentication in microfrontend apps
+  - simple flow (no backend involved)
+
+### next js (app router)
+
+I have worked with extensively with the next js pages router and got very comfortable with how it works and when the new app router, although i heard and read many interesting and new things, i was very reluctant to learn more on it.
+the more i scrolled on twitter(x) the more i read that, the new server and client component structure of the app router is not only efficient but also helps pages load faster, optimises seo and performance, so i thought id give it a try, _how hard and different could it be?_
+
+andd, ill also be talking about zod and react-hook-forms because for some reason, i am seriously overwhelmed when it comes to using these 2 together.
+
+#### takeaways
+
+the way you extract the `[id]` and `[slug]` for dynamic pages is just waay easier, and YES! BYE BYE getStaticProps and getStaticPaths! ive spent weeks trying to understand those concepts and the fact that it soo much easier to implement all of this in the App router, makes me want to pivot my preference to this app router at once.
+
+here are some of my notes, (just so that i can come back here for reference)
+
+- to create a page, we need to create a folder with that pages name, and then inside that folder, we need to have a `page.tsx`. only this page.tsx is publicly accessible.
+- within these folders we can have custom stylesheet modules and if we try to access it through the browser, we cant, because no access-io
+- there are `special` pages in this app router, one of which is this `page.tsx`, then we have `not-found.tsx` which is basically a 404 page that will be shown if the page whose folder its in isnt available
+- we also have `layout.tsx` to set the layout of that page.tsx file. and we also have `loading.tsx` which will be rendered in case the page is being loaded.
+- note that, all these files can be local scoped, in the sense that we can have ALL these files for a single page OR we could have it for the entire application, the choice is yours
+- how do we access query params and ids?
+
+```tsx [page.tsx]
+interface PageProps {
+  // id is one dynamic property
+  params: { id: number; slug: string[] };
+  searchParams: { sortOrder: string };
+}
+
+const Page = ({
+  params: { id, slug },
+  searchParams: { sortOrder },
+}: PageProps) => {
+  // the above code may be a bit complex at first glance, but we're extracting id,
+  // slug from params and sortOrder from searchParams
+};
+```
+
+- if you want to return some jsx/tsx you should use a page.tsx, otherwise if youre returning some http code, then you should use a route.tsx file
+- now, if you dont give a request param in your function definition, next js will by default cache your response and will return the same data the next time you call this api, to make sure youre fetching every single time, you need to mention `request: NextRequest`, even though you may not use the request
+- how to get the response for a single item? as in if i have a route like this `/api/items/1` how do i return the data for the 1st item? we follow this structure and keep a `[id]` folder with a route.tsx file inside it and we can follow the same interface for props as above
+- note: whats the difference between PUT and PATCH? we use PUT when we're replacing an object and PATCH when we're updating a few properties of that object
+
+```
+app
+└── api
+    └── users
+        ├── [id]
+        │   └── route.tsx
+        └── route.tsx
+```
+
+```tsx [api/users/id/route.tsx]
+interface Props {
+  params: { id: number };
+}
+
+export function GET(request: NextRequest, { params: { id } }: Props) {
+  if (id > 10) {
+    return NextResponse.json({ error: "item not found" }, { status: 404 });
+  }
+
+  return NextResponse.json({ id });
+}
+
+export async function POST(request: NextRequest) {
+  const body = await request.json();
+  // Validate the input
+  return NextResponse.json(body);
+}
+
+export async function PUT(request: NextRequest, { params: { id } }: Props) {
+  // Validate the input
+  const body = await request.json();
+  // if invalid, return 400 status
+  if (invalid)
+    return NextResponse.json({ error: "invalid input" }, { status: 400 });
+
+  // fetch the item from the db
+  // if the item doesnt exist, return 404 error
+  if (!item)
+    return NextResponse.json({ error: "item not found" }, { status: 404 });
+
+  // update the item
+  // return the updated item
+  return NextResponse.json({ id: 1, name: body.name });
+}
+
+export async function DELETE(request: NextRequest, { params: { id } }: Props) {
+  // Validate the input
+  const body = await request.json();
+  // if invalid, return 400 status
+  if (invalid)
+    return NextResponse.json({ error: "invalid input" }, { status: 400 });
+
+  // fetch the item from the db
+  // if the item doesnt exist, return 404 error
+  if (!item)
+    return NextResponse.json({ error: "item not found" }, { status: 404 });
+
+  // update the item
+  // return the deleted item
+  return NextResponse.json({});
+}
+```
+
+- coming to ZOD, its very similar to Joi in the sense that its used to validate the input and throw errors if there're any issues
+
+```ts [schema.ts]
+import { z } from "zod";
+
+const schema = z.object({
+  name: z.string().min(10),
+  email: z.string().email(),
+  age: z.number().gte(18),
+});
+
+export default schema;
+```
+
+- here's how wed integrate it with the route.tsx file
+
+```tsx [api/users/id/route.tsx]
+import schema from "./schema";
+
+interface Props {
+  params: { id: number };
+}
+
+export async function PUT(request: NextRequest, { params: { id } }: Props) {
+  // Validate the input
+  const body = await request.json();
+  // if invalid, return 400 status
+  const validation = schema.safeParse(body);
+
+  if (!validation.success)
+    return NextResponse.json(
+      { error: validation.error.errors },
+      { status: 404 }
+    );
+
+  // fetch the item from the db
+  // if the item doesnt exist, return 404 error
+  if (!item)
+    return NextResponse.json({ error: "item not found" }, { status: 404 });
+
+  // update the item
+  // return the updated item
+  return NextResponse.json({ id: 1, name: body.name });
+}
+```
+
+##### working with prisma
+
+- to initialise prisma in our application, we use `npx prisma init`
+- for the connection string, check the documentation on the prisma website to know how to construct the string for various dbs. note: the username for mysql is `root`, and the port is `3306`
+- running `npx prisma format` will format the prisma schema
+- whenever we make changes to our schema, we're supposed to run db migrations to keep our db and schema in sync. to perform this migration, we run `npx prisma migrate dev` and we also need to provide a name for that migration
+- to integrate and use our db, we need a prisma `client`, in the same prisma folder we create a file called client.ts
+- and while generating a client, and to make sure we use the best practices and prevent multiple prisma instances from being created we must use their documentation. however, this will not be an issue in prod as we dont have fast refresh there.
+- in case that article isnt to be found, heres the code
+
+```ts [client.ts]
+import { PrismaClient } from "@prisma/client";
+
+const prismaClientSingleton = () => {
+  return new PrismaClient();
+};
+
+type PrismaClientSingleton = ReturnType<typeof prismaClientSingleton>;
+
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClientSingleton | undefined;
+};
+
+export const prisma = globalForPrisma.prisma ?? prismaClientSingleton();
+
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+```
+
+- how do we use this prisma?
+
+```tsx [api/users/route.tsx]
+import prisma from "../prisma/client";
+
+export async function GET(request: NextRequest) {
+  const users = await prisma.user.findMany({
+    // to optionally filter
+  }); //to return all users
+
+  return NextResponse.json(users);
+}
+```
+
+```tsx [api/users/id/route.tsx]
+import prisma from "../prisma/client";
+import schema from "./schema";
+
+interface Props {
+  // one issue here, since this is coming from the url, we may say that its a number,
+  // but in reality its actually a string
+  // params: { id: number };
+  params: { id: string };
+}
+
+export async function GET(request: NextRequest, { params: { id } }: Props) {
+  const users = await prisma.user.findMany({
+    where: {
+      id: parseInt(id),
+    },
+  }); //to return all users
+
+  return NextResponse.json(users);
+}
+
+export async function POST(request: NextRequest) {
+  const body = await request.json();
+  const validation = schema.safeParse(body);
+
+  if (!validation.success)
+    return NextResponse.json(
+      { error: validation.error.errors },
+      { status: 400 }
+    );
+
+  prisma.user.create({
+    data: {
+      name: body.name,
+      email: body.email,
+    },
+  });
+  return NextResponse.json(user, { status: 201 });
+}
+
+export async function PUT(request: NextRequest, { params: { id } }: Props) {
+  const body = await request.json();
+  const validation = schema.safeParse(body);
+
+  if (!validation.success)
+    return NextResponse.json(
+      { error: validation.error.errors },
+      { status: 404 }
+    );
+
+  const user = await prisma.user.findUnique({
+    where: {
+      id: parseInt(id),
+    },
+  });
+
+  if (!user)
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+  const updatedUser = await prisma.user.update({
+    where: {
+      id: parseInt(id),
+    },
+    data: {
+      name: body.name,
+      email: body.email,
+    },
+  });
+
+  return NextResponse.json(updatedUser, { status: 201 });
+}
+
+export async function DELETE(request: NextRequest, { params: { id } }: Props) {
+  const body = await request.json();
+  const validation = schema.safeParse(body);
+
+  if (!validation.success)
+    return NextResponse.json(
+      { error: validation.error.errors },
+      { status: 404 }
+    );
+
+  const user = await prisma.user.findUnique({
+    where: {
+      id: parseInt(id),
+    },
+  });
+
+  if (!user)
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+  const deletedUser = await prisma.user.delete({
+    where: {
+      id: parseInt(id),
+    },
+  });
+
+  return NextResponse.json(deletedUser, { status: 201 });
+}
+```
+
+##### protecting routes
+
+- this new app router allows us to protect certain routes, and for this, in our root folder, outside of app, we create a `middleware.ts` file
+- and here, we export a fn called middleware that takes a request and this fn is executed for every request
+
+```ts [middleware.ts]
+import { NextResponse, NextRequest } from "next/server";
+
+export function middleware(request: NextRequest) {
+  return NextResponse.redirect(new URL("/new-page", request.url));
+}
+```
+
+- we dont want this to execute FOR EVERY request, we want it to execute only for certain routes right? so we also must define a config object
+
+```ts [middleware.ts]
+import { NextResponse, NextRequest } from "next/server";
+import middleware from "next-auth/middleware";
+
+// export function middleware(request: NextRequest) {
+//   return NextResponse.redirect(new URL("/new-page", request.url));
+// }
+
+export default middleware;
+
+export const config = {
+  // *: zero or more
+  // +: one or more
+  // ?: zero or one
+  matcher: ["/users/:id*"],
+};
+```
+
+##### next auth hiccups
+
+- one issue ive encountered a 100 times but just couldnt solve, was the fact that i couldnt login using oauth and it kept saying 'sign in with a different account'
+- here's a potential fix?
+
+```ts [app/api/...nextauth/route.ts]
+export const authOptions: NextAuthOptions = {
+  adapter: PrismaAdapter(prisma),
+  providers: [
+    GoogleProvider({
+      clientId: ...
+      clientSecret: ...
+    })
+  ],
+ session: {
+   strategy: "jwt",
+ }
+}
+```
+
+- and then restart your dev server
+- to work with old school, username and password you need to check the `credentials` provider
+
+```ts [app/api/...nextauth/route.ts]
+import CredentialsProvider from "next-auth/providers/credentials";
+
+export const authOptions: NextAuthOptions = {
+  adapter: PrismaAdapter(prisma),
+  providers: [
+    GoogleProvider({
+      clientId: ...
+      clientSecret: ...
+    }),
+    CredentialsProvider({
+      name: 'Credentials',
+      credentials: {
+        username: { label: 'Email', type: 'email', placeholder: 'Enter email' },
+        password: {  label: 'Password', type: 'password', placeholder: 'Enter password' },
+      },
+      async authorize(credentials, req) {
+        if(credentials?.email || credentials?.password) return null
+
+        const user = await prisma.user.findUnique({
+          where: {
+            email: credentials.email
+          }
+        })
+
+        if(!user) return null
+
+        // npm i bcrypt && npm i -D @types/bcrypt
+        const isValid = await bcrypt.compare(user.hashedPassword!, credentials.password)
+
+        if(!isValid) return null
+        return user
+
+      }
+    })
+  ],
+ session: {
+   strategy: "jwt",
+ }
+}
+```
+
+- to allow users to register, we create a folder called register in our api directory and inside that, we place a `route.ts`
+
+```ts [app/api/register/route.ts]
+import { z } from "zod";
+
+const schema = z.object({
+  email: z.string().email(),
+  password: z.string().min(10),
+});
+
+export async function POST(request: NextRequest) {
+  const body = await request.json();
+
+  const validation = schema.safeParse(body);
+
+  if (!validation.success)
+    return NextResponse.json(
+      { error: validation.error.errors },
+      { status: 400 }
+    );
+
+  const user = await prisma.user.findUnique({
+    where: {
+      email: body.email,
+    },
+  });
+
+  if (user) {
+    return NextResponse.json({ error: "User already exists" }, { status: 400 });
+  }
+
+  const hashedPassword = await bcrypt.hash(body.password, 10);
+  const newUser = await prisma.user.create({
+    data: {
+      email: body.email,
+      hashedPassword,
+    },
+  });
+
+  return NextResponse.json({ email: newUser.email }, { status: 201 });
+}
+```
+
+##### sending emails
+
+- using ses or react email
+- what does this lib do? it gives a bunch of components to send html emails, gives us tools to preview emails and send them
+- install `npm i react-email @react-email/components`
+- to see previews of the emails you write, add another script
+
+```json [package.json]
+{
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "preview-email": "email dev -p 3030"
+  }
+}
+```
+
+- and in the root directory, create a `emails` folder and inside that, we have react components that resemble our templates
+- add a new file called `WelcomeTemplate.tsx` and in this we create our email template, but we need to import a few components from `@react-email/components`
+
+```tsx [emails/WelcomeTemplate.tsx]
+import {
+  Html,
+  Body,
+  Text,
+  Link,
+  Container,
+  Preview,
+  Tailwind,
+} from "@react-email/components";
+
+interface WelcomeProps {
+  name: string;
+}
+
+const WelcomeTemplate = ({ name }: WelcomeProps) => {
+  return (
+    <Html>
+      <Preview>Hello {name}</Preview>
+      <Tailwind>
+        <Body className="flex bg-red-300 ...">
+          <Container>
+            <Text>how are you doing today? {name}</Text>
+            <Link href="https://nextjs.org">learn more</Link>
+          </Container>
+        </Body>
+      </Tailwind>
+    </Html>
+  );
+};
+
+export default WelcomeTemplate;
+```
+
+- before you want to preview the emails and all, its better to go to your .gitignore file and add .react-email/
+- because when we run npm preview-email, we generate 100s of files and we cant push all of it to git
+- once you run it, you can see it in localhost:3030 and any change you make can be viewed there
+- how to send it? ses is one method ive used in the past, or we could use Resend, which is by the same team behind react-email
+- so for this we install resend `npm i resend`
+- and in our api folder, we create another folder called 'send-email' and then inside that we create a `route.tsx`
+
+```tsx [app/api/send-email/route.tsx]
+import WelcomeTemplate from "@/emails/WelcomeTemplate";
+import { Resend } from "resend";
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+export async function POST(request: NextRequest) {
+  const body = await request.json();
+
+  await resend.emails.send({
+    from: "wBkKp@example.com", // change this to the email you've added inside the domains section of your resend account
+    to: body.email,
+    subject: body.subject,
+    react: <WelcomeTemplate name={body.name} />,
+  });
+
+  return NextResponse.json({});
+}
+```
+
+##### lazy loading
+
+- lets say you want to show a component only when a user clicks on a button or so on.. basically to reduce the bundle size, we could import the component like this
+
+```tsx
+const HeavyComponent = dynamic(() => import("@/components/HeavyComponent"), {
+  loading: () => <p>Loading...</p>,
+  // by default these are rendered on the server, so we can disable it
+  ssr: false,
+});
+```

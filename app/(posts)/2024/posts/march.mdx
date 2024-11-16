@@ -1,0 +1,125 @@
+---
+title: "march"
+author: 
+  name: "brihadeesh"
+  link: "https://github.com/Brihadeeshrk"
+  handle: "Brihadeeshrk"
+time:
+  created: "2024-04-01T20:54:05.150Z"
+  updated: "2024-11-16T18:23:32.447Z"
+---
+
+## Start
+
+My march wasn't the most productive when it came to me exploring and learning new things. Instead, I spent my time in march reinforcing concepts i had learned in the past 2 months, namely React Native and Micro frontends.
+
+### What did i do in react native?
+
+in this case, i'm talking about the app i built for PRDC in january,
+so, in react native, this time a lot of the focus was on somehow improving the performance of the application, and also completing change requests and smashing bugs.
+Talking about change requests, i had to build a few extra screens with complex Graph logic that allowed the user to choose which lines they'd like to see on the graph, and we toggle these lines using `Switches`, from `react-native` along with `react-native-chart-kit` for the linegraphs.
+
+An example of what i did, in abstract,
+and as i've explained in the previous blog post, complex api transformations are necessary in order to show the UI on the screen, and without these, the app would constantly crash as there is a possibility that amidst non-zero values, a null value could be found. some responses consisted of only null values, so careful steps had to be taken to make sure the app was able to handle all such values without crashing and behaving unpredictably.
+
+this package had a requirement that stated that, at any given moment 1 line HAS to be present on the graph, otherwise the app would cease to run
+
+```jsx [index.jsx]
+// Logic to toggle lines to be seen on the UI
+const toggleLineVisibility = (legend) => {
+  const updatedSelectedLines = [...selectedLines];
+  if (updatedSelectedLines.includes(legend)) {
+    const index = updatedSelectedLines.indexOf(legend);
+    updatedSelectedLines.splice(index, 1);
+  } else {
+    updatedSelectedLines.push(legend);
+  }
+  setSelectedLines(updatedSelectedLines);
+};
+
+// fn to extract data of selected line
+const filterData = () => {
+  const filteredData = {};
+  const keys = Object.keys(formattedData);
+  selectedLines.forEach((line) => {
+    const matchingKey = keys.find((key) => key.endsWith(line));
+    if (matchingKey) {
+      filteredData[line] = formattedData[matchingKey];
+    }
+  });
+
+  return filteredData;
+};
+
+const filteredData = filterData();
+
+return (
+  <>
+    <>...</>
+    {/* How i'm rendering the switches and making sure at least 1 line is selected */}
+    <View style={styles.switchContainer}>
+      {lines.map((line, index) => (
+        <View key={index} style={[styles.switchRow]}>
+          <Switch
+            value={selectedLines.includes(line)}
+            onValueChange={() => toggleLineVisibility(line)}
+            disabled={
+              selectedLines.length === 1 && selectedLines.includes(line)
+            }
+          />
+          <Text style={{ marginLeft: 10 }}>{line}</Text>
+        </View>
+      ))}
+    </View>
+    <>...</>
+  </>
+);
+```
+
+and this is the linegraph component
+this chart package requires the data to be in a specific format, and we have the option to provide labels, legends and so on..
+
+```jsx [LineGraph.jsx]
+const transformData = (selectedLines, rawData) => {
+  const transformedData = {
+    datasets: [],
+  };
+
+  const uniqueXAxisSet = new Set();
+
+  selectedLines.forEach((legend, index) => {
+    const lineData = rawData[legend] || [];
+    const lineDataset = {
+      data: [],
+      color: getColor(legend),
+      strokeWidth: 2,
+    };
+
+    lineData.forEach(({ xAxis, value }) => {
+      if (!uniqueXAxisSet.has(xAxis)) {
+        uniqueXAxisSet.add(xAxis);
+      }
+
+      lineDataset.data.push(value);
+    });
+
+    transformedData.datasets.push(lineDataset);
+  });
+
+  return transformedData;
+};
+```
+
+so, a lot of the work i was doing was in and around this, a lot of time, a LOT OF TIME was spent on trying to optimise and make the App performant despite the humongous API responses, and also UI modifications such as the graph above, were done in march
+
+### what did i do in micro front ends?
+
+i noticed that i was losing track of some of the things i learnt in micro front ends, specifically when it came to webpacks module federation plugin, such as remotes and when integrating with AWS for hosting and CloudFront. So, i spent a few hours a week focussing on that, although i admit i need to constantly work on it to get a better and deeper understanding of the whole thing.
+
+### other than that?
+
+other than that, i had planned to complete an extensive typescript course, which i couldnt complete in march, but will hopefully complete this month (april) or in the coming few weeks/months.
+
+another project in another domain, much different to what i currently do has peaked my interest and in the spirit of learning and trying new things, ive decided to put in my time resources into learning and understanding this new domain in the hopes that new venues open up.
+
+i know for a fact that it will be a rocky journey, navigating through a domain that i have absolutely no knowledge in, but it remains to be seen if this is something i can work on with the same confidence and passion as web dev

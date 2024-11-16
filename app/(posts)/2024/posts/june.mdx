@@ -1,0 +1,307 @@
+---
+title: "june"
+author: 
+  name: "brihadeesh"
+  link: "https://github.com/Brihadeeshrk"
+  handle: "Brihadeeshrk"
+time:
+  created: "2024-07-01T20:54:05.150Z"
+  updated: "2024-11-16T18:23:32.447Z"
+---
+
+this month i'm going to be venturing into a concept that i've wanted to learn for over a year. its super important to know, so my bad for not knowing it till now, but better late then never. so, this month, i'm going to be learning about microservices, docker, kube and all of that stuff. this is going to take a lot longer than a month (my opinion), but damn, i'm ready
+
+# why microservices?
+
+sure its a flashy term and is a `buzz` word but why do we use it and what benefits do we get?
+
+- scalability
+  - each service can be scaled independently depending on the demand
+  - which is better resource management as only the components that are needed more are scaled
+- flexibility in tech stack
+  - polyglot programming - diff services can be written in diff langs and diff technologies
+  - easier to integrate new tech and tools in specific services
+- fault isolation
+  - failure in 1 service doesnt bring down the entire network
+  - simpler recovery as only the service that has been affected needs to be brought back up
+- faster ci cd
+  - smaller and more manageable codebases which are easier to develop, deploy and test
+- organisational alignment
+  - decentralised approach
+  - aligns with agile and scrum where each team can take up a service and work fast
+  - clear ownership when it comes to which team does what
+- easier maintenance and updates
+  - since everything is modular, changes can be made independently without affecting other services
+- better security
+  - service level security - security measures can be implemented at the (micro)service level, reducing attacks
+  - isolation of sensitive data - data can be stored in an isolated service making it easier to secure
+  - q> but also this way you only have to attack one service for all the data. then what?
+- optimised for cloud and devops
+  - containerization - suited for containerized en, scaling and deploying on cloud envs
+  - service discovery and load balancing
+- better perf
+  - reduced latency - services can be geographically districuted to be closer to the end user
+  - resource optimisation
+
+# fundamentals
+
+## what is a microservice
+
+- a **monolithic** contains all the routing, all the middlewares, all the biz logic and all the db access code req to implement all the features of our application
+- now, a single **microservice** contains all the routing, all the middleware, all the biz logic and all the db access code to implement **one feature** of our application
+- all of the services are self sufficient, so every service has all the code required to make it work perfectly, most likely will have its on DB also
+- each system/service is standalone and doesnt depend on any other service.
+
+## some big challenges when working with MS
+
+1. data mgmt between services
+   - how data is stored in a service and how we can communicate with other services
+   - why this is a challenge?
+   - in MS, the way we store and access data is a bit weird
+     - we're usually going to give every service a db, if it doesnt need one, we're not going to give it one
+     - services will never ever reach into another service's db
+     - this property of every service getting its own is a pattern called "database-per-service"
+     - we want every service to run independently of other services
+     - db schema/structure might change unexpectedly
+       - lets just say (for the sake of the arg) that service A is accessing service B's db
+       - service B changed the schema of their db but didnt inform A, now A is expecting a value but receives something else instead.
+     - some services might function more efficiently with diff types of db's (sql v nosql)
+   - so, how then do we communicate between services?
+   - there are 2 comm strategies btw services - **SYNC** and **ASYNC** and NO, the dont have the same meaning as the JS async and sync keywords
+   - SYNC - services communicate with each other using direct requests. it doesnt have to be a HTTP req or anything, it can be in any form but its a DIRECT req
+     - UPSIDES
+       - conceptually easy to understand
+       - this service that is interacting doesnt need a db
+     - DOWNSIDES - gigantic operational downsides
+       - introduces a dependency between this new service and the services whose data is necessary
+       - if any inter service req fails, the overall req fails
+       - the entire req is only as fast as the slowest req
+       - can introduce a web of requests
+   - ASYNC - services communicate with each other using EVENTS
+     - APPROACH 1 (not so great)
+       - going to intro smthn that is accessible from all the services, referred to as an EVENT BUS
+       - the job of the EVENT BUS is handle notifs/ events being emitted from the diff services
+       - these notifs/ events are like obj that describe smthn that has happened or is going to happen inside our app
+       - all the services are connected to this bus, and every service can either emit or recv events from this bus
+       - so the service that needs data from other services would emit an event to the bus with a type property and some data
+       - and this bus can automatically handle incoming events and route them off to diff services that might be able to handle it. so the bus might forward this event to say, service A
+       - so when A has the result, it would emit another event, and we could configure the bus in a way such that if the type of the event is of a particular type, we could tell it to forward it to the service that needs the data
+       - not the best way as it is basically sync communication but its not even easy to understand conceptually
+     - APPROACH 2
+       - just like db per service pattern, async comm is going to seem bizarre and inefficient
+       - so what we're going to do is, first rephrase the task this new service is going to do and break up specifically, mark the ips and the ops so you know what is needed
+       - then, create a db with this schema for this service
+       - and now the question arises, how will this new service have the data thats stored in other services?
+       - so along with storing the data in their respective dbs, we also emit an event to the event bus and this event is passed onto this new service, and this service populates its db and then if it has the req data, it returns it to the user
+     - ADVANTAGES
+       - this way, the new service has 0 dependancies on other services
+       - service D will be extremely fast
+     - DISADVANTAGES
+       - data duplication. paying for extra storage + extra db
+       - harder to understand (conceptually)
+
+# mini ms app
+
+## goals of this section
+
+1. get a taste of MS arch
+2. build as much as possible from scratch
+   1. every service
+   2. event broker
+3. not advised to use this as a starter for duture projs are we'll slowly gravitate to using packages rather than coding everything from scratch
+
+## service breakdown
+
+- for every unique & diff resource, we're going to create a service. so, in this project (commit "starter code for ms"), we have 2 major services, one to add a post, another to add comments
+- post service
+  - adding and showing all posts
+- comments service
+  - adding and showing all comments
+- now, the post service seems pretty straight forward
+- but every comment is tied to a post, so we have some dependency and thats an issue we have to tackle
+- so we're going to have to use the one of the comm styles we discussed above, and we're going to try and introduce some complexity like, only showing the top 10 comments
+- so when we say top 10 posts, we only want the comments which have been posted these posts right? we dont want to show every comment and every post in the universe
+- now its important to go technical and break down the endpoints, what type of req, body and goal of every service
+
+### breakdown of posts service
+
+- 2 apis
+- POST - /posts - `{title: string}` - goal is to create a post with a unique id and add it to the obj
+- GET - /posts - `{}` - goal is to get all the posts in the posts obj
+
+### breakdown of comments service
+
+- 2 apis
+- POST - /posts/:id/comments - `{comment: ""}` - goal is to add a comment to to the post with the id mentioned in the req.params
+- GET - /posts/:id/comments - `{}` - goal is to get all the comments in the post with the id mentioned in the req params
+
+## note
+
+for this project, there is a mention of automating testing for the server code just so we save time manually testing through postman, but when it comes to front end stuff, i will be using RTL and performing TDD just to make it a habit from my end to write tests and then code
+
+- now, if you check the code (commit: completed the client app) you'll notice that, we're first making one nw req to fetch all the posts, and then we're making n comments api calls for n posts, as in, if we have 3 posts, were making 3 api calls and this is an imp issue we need to address.
+- how do we minimise the no of req we send?
+- we'll have to use one of the comm styles discussed above, SYNC or ASYNC
+
+  - SYNC - we send a req to 4000 asking for the posts, this server sends a req to 4001 asking for comments for the post of that id
+  - and then the 4000 server sends the posts with embedded comments
+  - NOT THE BEST SOLN. why?
+
+    - dependancy btw services
+    - any inter service fails? the whole req fails
+    - introduce a web of reqs
+
+  - ASYNC - we're going to introduce something called a QUERY SERVICE
+  - the goal of this serv is to listen to any event like, post/ comment creation.
+  - this serv will then take all the diff posts, comments and assemble them into a data struct thats going to solve our issue of multiple reqs into just 1 req.
+
+- implementation:
+  - now whenever we create a post, we emit a new event of some type and send it to the EVENT BUS, and this EVENT BUS will send it to whichever service is interested in it, which in this case is the query service.
+  - the query service, will basically process this event and store all this data in its own db
+  - then whenever we create a comment for a post, we emit a new event of some type and send it to the event bus, and this event bus will send it to whichever service is interested in it, which in this case is the query service again.
+  - the query service, will basically store all the comment against this post's record
+  - and now instead of making a GET req to posts, we can make a get req to Query service
+  - so this way, query service has 0 dependence on other services
+  - extremely fast
+  - but, one small issue is data duplication and is a bit harder to understand
+
+### event bus arch
+
+- trying to build all of this custom so we understand how it works instead of using an OTS solution (off the shelf)
+- there are many implementations - kafka, rabbitMQ, NATS
+- what these do is, they recv events (which could be anything! theres no defined struct for an event) and they publish it to all the listeners
+- when choosing an OTS soln, you cant just pick one and go about it. some features are easy to implement, while some are a bitch. so youve got to evaluate the pros and cons of all them and then choose a soln
+- now since we're going with express, we're going to be building only the essential features and we're wont have the vast majority of features that buses usually provide
+- ours is going to be simple, and not really useful outside of this example
+- so for this implementation, we're going to have another endpoint to all 2 of our servers with /events and theyre going to be listening to POST reqs
+- so whenever an event occurs we're going to send a req to this bus and this bus is going to in turn make req to the /events endpoints of all the servers
+
+### moderation
+
+- so now, lets say we want to add some sort of content moderation where if a comment has a particular word, we hide it on the front end
+- and for that, every comment needs to have another property called `status`
+- whenever someone posts a comment, and they hit refresh it should say 'comment is under moderation'
+- after say 5mins or so, or whatever, if it passed, show the comment
+- or say, this comment is against moderation
+- fairly simple to do in the front end by using js includes()
+- but how to do it in the backend?
+
+#### step 1
+
+- now we know that we emit events for every action right
+- so we need to create a moderation service
+- so the desired flow is
+  - comment service emits event
+  - moderation service emits an event with the moderated status
+  - query service picks up this status and adds it to the db
+- lets say the mod service is the only service that cares about the commentCreated event
+- now the mod service will validate the comment and check if everything is ok, if it is or if its not, the appropriate status will be applied and another event will be emitted, CommentModerated
+- and this event will be picked up by the Query service which will add it to the db
+- what are the pros and cons?
+  - lets just say we hand this comment to a person and ask them to review it
+  - if it took days, then there is some significant delay in the process
+  - now lets think of this flow
+    - you post a comment (backend: event is emitted to the bus and mod service)
+    - you refresh the page and see nothing or atleast say smth like your comment is under moderation or something
+    - so even if they refresh its not going to happen instantly because moderation will take some time
+  - so the downside is that the user cant see what they submitted instantly, even if just says under mod etc..
+
+#### step 2
+
+- its the logic you were thinking of all along
+- when the comment is being stored, give it a default value of status: 'pending'
+- so when the mod service eventually does approve it changes the document in the query table and the ui is changed
+- what are some issues in step 1 and step 2
+  - now the question being asked is, is the query service responsible for the updation of this status etc?
+  - you may say its a single line fn that changes the status
+  - now lets say tomo we add other services like lieks, dislikes etc.. so then the query service is supposed to have the logic for all of that?
+  - the logic behind the query service is to being a service that quickly dispatches data to the user
+  - and we really shouldnt add all this processing logic to this service
+
+#### step 3
+
+- now do we have any service whose primary function is to work with comments? yes the comment service
+- so what we do is, by default when you create a comment, append it with a status- pending
+- hen, emit a event to the bus
+- the event is picked up by the mod and the query service
+  - the query service takes it in and stores
+  - mod service does its job
+- then after the mod service is done, it emits another event CommentModerated which is handled by the Comment Service
+- the comment service does the necessary updates and emits another event called CommentUpdated
+- this event is handled by Query which simply replaces or does whatever is needed to copy the data from the event and store it in its db to serve to the user
+- this is the process we'll end up using
+
+### dealing with missing events
+
+- what if one service suddenly goes off in the middle and some posts are still in moderation?
+- what if we create the QUERY service JUST NOW but we have years' worth of comments and posts, then what?
+- its imp to note that prod grade event buses have a much more robust implementation for storing events but we're only doing all this to understand the need and what sooort of happens bts
+- how would we approach this scenario?
+
+  - SYNC
+    - send a req to comments and posts and get all their data through api calls
+    - and for this, wed have to make some changes to the server and write endpoints to send data in bulk
+  - DB ACCESS
+    - instead of writing endpoints in server and post
+    - just make it such that QUERY accesses the dbs of post and comments no?
+    - but what if post is sql and comments is nosql? then you have to write code for 2 diff dbs and its a huge pain in the ass
+  - INTERNAL STORE
+
+    - just as i thought, we're going to have an internal data struct inside the event bus that keeps track of all the events
+    - and this is my assumption of how its going to work, if any service is down, we'd get an axios error right? so in the catch block of this api call, we add this event to the array? or queue
+    - and when some req does go through, we check if there are eles in this queue, and then send them all off
+
+    - CORRECTION:
+      - we keep track of ALL events
+      - so lets say a service is down, and it receives an event
+      - as soon as it comes online it can send an event asking for an update and tell it the events it last received, if there are any new events, the bus would send it over
+
+#### implementation
+
+```js [event-bus.js]
+const events = [];
+
+app.post("/events", (req, res) => {
+  const event = req.body;
+
+  events.push(event);
+
+  axios.post("http://localhost:4000/events", event).catch((err) => {
+    console.log(err.message);
+  });
+  axios.post("http://localhost:4001/events", event).catch((err) => {
+    console.log(err.message);
+  });
+  axios.post("http://localhost:4002/events", event).catch((err) => {
+    console.log(err.message);
+  });
+  axios.post("http://localhost:4003/events", event).catch((err) => {
+    console.log(err.message);
+  });
+  res.send({ status: "OK" });
+});
+
+app.get("/events", (req, res) => {
+  res.send(events);
+});
+```
+
+goal is to make an api req as soon as the server starts listening
+
+```js [query.js]
+app.listen(4002, async () => {
+  console.log("Query listening on 4002");
+
+  try {
+    const res = await axios.get("http://localhost:4005/events");
+    for (let event of res.data) {
+      console.log("processing event: ", event.type);
+      handleEvents(event.type, event.data);
+    }
+  } catch (error) {
+    console.log("error while fetching prev events", error);
+  }
+});
+```
+
+ahh, june ended without me being able to complete even 10% of the concepts under microservices, will continue on the same topic in july, until i finish it fully and gain an indepth understanding on the subject

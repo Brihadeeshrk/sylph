@@ -1,0 +1,385 @@
+---
+title: "january"
+author: 
+  name: "brihadeesh"
+  link: "https://github.com/Brihadeeshrk"
+  handle: "Brihadeeshrk"
+time:
+  created: "2024-01-28T20:54:05.150Z"
+  updated: "2024-11-16T18:23:32.447Z"
+---
+
+## Inception
+
+I kicked off 2024 by [completing a udemy course](https://www.udemy.com/certificate/UC-41311e05-20e6-45f2-ba95-dabddbcb92e6/) on React Native, and also working on 3 projects on the same.
+The first App I built is a Production Ready App for [PRDC](http://www.prdcinfotech.com/). Now, for this project, my tasks were purely in the Front End domain, as the APIs were provided by PRDC.
+This App included several screens and several UI components, and I'll be going through some of them here and i'll also be talking on the challenges i faced while working on this project.
+
+The second project i built was a Recipe Finding App, This App was solely built for me to understand and get a hang of React Native Reanimated, which is a package I had used very scarcely while working with Navigation, but by working
+on this project I understood its use and it's very similar to Framer Motion, but for Mobile.
+
+The third project I built is a UI Library for React Native. This library comprises of over 29 components and I built this with 2 of my coworkers, Vamshi and Nikhil. This UI Library, built with TypeScript, Expo, and Nativewind contains most all the Components listed on Radix UI's website but,
+optimised for Mobile.
+We've also tried to incorporate variants into most components.
+A Sample of some of the components I've built is listed below
+
+_this is not a plug but ..._
+
+before going into the specifics, I just want to thank [Expo](https://expo.dev/) for making these projects the easiest of cakewalks, from setting up the project with the option to work with js or ts,
+to the abundance of packages available for React Native, and in my opinion the greatest feature, EAS.
+Having Expo build the Android and iOS versions of your Application, on THEIR servers, with almost no extra work on your end really simplifies the entire process of making an App.
+The fact that I only have to work on the UI and functionality, and leave the developing part to Expo really takes a huge amount of work off my hands because as far as I've heard, developing for Android and iOS using the solely React Native is a very
+complicated process with too many steps.
+
+For anyone getting into Expo and React Native, I highly recommend working with the React Native Managed Workflow as you can do 99% of the tasks you wish to accomplish with this process, and if you prefer a bit more leeway you could
+look into the Expo Bare Workflow.
+
+Oh, and how could i forget the Expo App!
+rather than running your app on simulators, or building APKs and signing builds for physical devices AND THEN seeing how they work on Android and iOS, the Expo App is truly impressive. The fact that I can use my physical
+device to see changes made in real time without being connected any cable is a huge plus, and the fact that the App also provides a fully capable Debugger and also the benefit of React Devtools.
+
+### Building Blocks of PRDC
+
+Let me first talk about the Tech Stack, and then we could talk more on the Layouts, and smaller components of the Application.
+As mentioned, the APIs and Data was provided by the client, PRDC. So, for the Front End, my stack included:
+
+- React Native StyleSheet - For Styling
+- [React Native Toast Notification](https://github.com/arnnis/react-native-toast-notifications) - For dispatching Toasts for various operations, API calls
+- [React Native Responsive Screen](https://www.npmjs.com/package/react-native-responsive-screen?activeTab=readme) - For responsive screen design
+- React Navgation - For App Navigation
+- Axios - For API calls
+- React Context API - For Global Context
+- Custom React Hooks - For Calling API Functions
+- [React Native Async Storage](https://github.com/react-native-async-storage/async-storage#readme) - For maintaining login persistence and also storing essential user info
+- [@shipt/segmented-arc-for-react-native](https://www.npmjs.com/package/@shipt/segmented-arc-for-react-native) - For Guage Charts
+- [react-native-gifted-charts](https://www.npmjs.com/package/react-native-gifted-charts) - For Line Charts
+
+Now that we've covered the tech stack, lets start off with the layout and move on to the smaller components. This particular was only to be used by a group of users, so, essentially a login screen
+had to be created and also, this screen called for [Nested Navigators](https://reactnavigation.org/docs/nesting-navigators/). As per the design, Drawer and Stack Navigators were required so, this meant
+I totally had _3_ Navigation Components, One for Pre-Authenticated(Native Stack Navigator) Screens, One for Post-Authenticated (NStack Navigator), the Drawer Navigator (which was nested inside the NStack Navigator).
+
+And as soon as the user logged in, I'm to call an API that fetches the data that this logged in user has access to, and I stored this data on the device, along with essential login data just so that login
+persistence can be maintained.
+And I also used Custom Hooks to call functions as soon as the User logs in, Taps on Buttons etc.
+
+```jsx
+import React, {useEffect, useState} form 'react'
+
+const useData = () => {
+
+  useEffect(() => {
+    fetchData()
+  }, [])
+
+  const [loggedIn, setLoggedIn] = useState(false)
+  // ...
+  return {
+    loggedIn
+  }
+}
+
+export default useData
+```
+
+The UI was built using React Native Stylesheets, although I now prefer [NativeWind](https://www.nativewind.dev/) as it is sooo much simpler to use. I had to built Custom Buttons, I used TouchableOpacity and at times,
+I used Pressable, but noticed NO HUGE difference in the two. I also had to build Full Screen Modals that were built on top of the Modal component by React Native. I built Accordions, whose content slides down upon tapping the Arrow Icon
+which was taken from `Ionicons` from `@expo/vector-icons`.
+
+```jsx
+// Snippet for Accordion Animation
+const [expanded, setExpanded] = React.useState(false);
+const [height, setHeight] = React.useState(0);
+const animatedHeight = React.useRef(new Animated.Value(0)).current;
+
+const toggleAccordion = () => {
+  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+  setExpanded(!expanded);
+};
+
+React.useEffect(() => {
+  Animated.timing(animatedHeight, {
+    toValue: expanded ? height : 0,
+    duration: 300,
+    useNativeDriver: false,
+  }).start();
+}, [expanded]);
+```
+
+The huge volume of data that was fetched by APIs made the App initially very slow to use, and even the simplest of actions, such as
+a button tap, or a modal opening would be noticeably slower. So with some help from the backend team @ PRDC, I was able to write functions that store ONLY the data that the user has access to and discard the rest.
+But the most challenging aspect of this application, was data filtering and formatting. The data that was to be displayed in the above accordions was not so easy to handle. These Accordions were made to show the cities and places the user has access
+to. A traditional approach from a backend perspective, would be to return the state, district, region etc, but here, i was receiving ALL station data, and i had to use JS Sets and other APIs to again, filter out and store only the stations that the user
+has access to.
+
+```jsx
+// a snippet to extract unique regions from the response but only store the ones the user has acces to
+export const extractUniqueRegions = (stationData, userData) => {
+  if (!Array.isArray(stationData)) {
+    console.error("Invalid stationData format. Expected an array.");
+    return [];
+  }
+
+  const allowedStationCodes = userData?.stations || [];
+
+  const regions = stationData
+    .filter((item) => allowedStationCodes.includes(item.stationCode))
+    .map((item) => item.Region);
+
+  const uniqueRegions = [...new Set(regions)];
+  return uniqueRegions;
+};
+```
+
+This worked but this was just the beginning. The data to be displayed in the application, was to be fetched from the Api _(obviously)_ BUT, the format at which the data was being fetched made it increasingly more difficult.
+For Example, Let's say that a particular object of data has 6 properties, normally you'd expect that the response would be one object with 6 properties in it right?
+but thats not how I got the response here,
+for every object, lets again say it has 6 properties, I received 6 objects from the response, and this is just for 1 OBJECT. The task was to figure out which property belonged to which object and to somehow concatenate all these
+related properties into one object
+For example, this is how i'd receive the data for an objects
+
+```bash
+{
+    "STATION_NAME1.OBJECT_NAME.PROPERTY1": [
+        [
+            [
+                "REFRESH TIME: --/--/-- 00:00:00",
+                {value to be shown}
+            ]
+        ]
+    ],
+    "STATION_NAME1.OBJECT_NAME.PROPERTY2": [
+        [
+            [
+                "REFRESH TIME: --/--/-- 00:00:00",
+                {value to be shown}
+            ]
+        ]
+    ],
+    "STATION_NAME2.OBJECT_NAME.PROPERTY3": [
+        [
+            [
+                "REFRESH TIME: --/--/-- 00:00:00",
+                {value to be shown}
+            ]
+        ]
+    ],
+}
+```
+
+and this is how i needed to display it in the application
+
+```bash
+Title: OBJECT_NAME
+
+Description:
+PROPERTY1: Value1   PROPERTY2: Value2   PROPERTY3: Value3
+PROPERTY4: Value4   PROPERTY5: Value5   PROPERTY6: Value6
+
+```
+
+So, This truly took a chunk of time to understand how to destructure, and store and render it on the UI. I did manage to write a function that would transform this api into an object that made it easy to
+work with
+here's a very abstract version of the function i wrote to transform the API
+
+```js
+const transformAPI = (apiResponse) => {
+  const transformedData = [];
+  let refreshTime;
+
+  for (const key in apiResponse) {
+    if (apiResponse.hasOwnProperty(key)) {
+      const [timestamp, value] = apiResponse[key][0][0];
+      const [, section, , name, attribute] = key.split(".");
+      const attributes =
+        transformedData.find((item) => item.name === name)?.attributes || {};
+      attributes[attribute] = value;
+
+      const existingItem = transformedData.find((item) => item.name === name);
+      if (existingItem) {
+        existingItem.attributes = attributes;
+      } else {
+        transformedData.push({ name, attributes });
+      }
+
+      // Additional transformation logic...
+
+      refreshTime = timestamp;
+    }
+  }
+
+  return [refreshTime, transformedData];
+};
+```
+
+and this was how the data looked after passing it through this function
+
+```js
+[
+  {
+    columns: {
+      Property1: 27,
+      Property2: 38,
+      Property3: 19,
+      Property4: 42,
+      Property5: 30,
+      Property6: 15,
+    },
+    deviceName: "Object1",
+  },
+  {
+    columns: {
+      Property1: 31,
+      Property2: 19,
+      Property3: 25,
+      Property4: 37,
+      Property5: 28,
+      Property6: 22,
+    },
+    deviceName: "Object2",
+  },
+  {
+    columns: {
+      Property1: 19,
+      Property2: 35,
+      Property3: 14,
+      Property4: 33,
+      Property5: 26,
+      Property6: 29,
+    },
+    deviceName: "Object3",
+  },
+  {
+    columns: {
+      Property1: 42,
+      Property2: 23,
+      Property3: 30,
+      Property4: 18,
+      Property5: 36,
+      Property6: 24,
+    },
+    deviceName: "Object4",
+  },
+  {
+    columns: {
+      Property1: 38,
+      Property2: 27,
+      Property3: 20,
+      Property4: 31,
+      Property5: 19,
+      Property6: 33,
+    },
+    deviceName: "Object5",
+  },
+];
+```
+
+So, if you see it's a huge time saver now that I've managed to organise the data such that it can be easily rendered and if the user chose another Station, and if that station had data was to be shown via a Guage or a Line Chart,
+I had to write helper functions that transform the Api into a format that would be easy to show on the graph.
+I also added Loading Overlays to show Loading Spinners from React Native ActivityIndicators to show Loading Statuses and also displayed error messages (if any) via Toasts, and also let the user know if the server is down via error toasts.
+
+All in all, I'd say this app really tested my skills as a developer and I'm truly happy to say that I have completed this application and the project has been delivered to the client **2 weeks earlier** than initially planned.
+
+### Building Blocks of the 2nd App
+
+The other app I built, as i mentioned, was to get a grasp on react native Reanimated and this is the video and channel i watched to understand and learn [Code with Nomi](https://www.youtube.com/watch?v=cdnneQjsoT0)
+
+### React Native UI Library
+
+```tsx [Calendar.tsx]
+import React from "react";
+import { View, Text, TouchableOpacity } from "react-native";
+import DateTimePicker from "@react-native-community/datetimepicker";
+
+export const Calendar: React.FC = () => {
+  const [date, setDate] = React.useState(new Date());
+  const [showPicker, setShowPicker] = React.useState(false);
+
+  const handleDateChange = (event: any, selectedDate: Date | undefined) => {
+    const currentDate = selectedDate || date;
+    setShowPicker(false);
+    setDate(currentDate);
+  };
+
+  const handleShowPicker = () => {
+    setShowPicker(true);
+  };
+
+  return (
+    <View>
+      <TouchableOpacity className={"p-4"} onPress={handleShowPicker}>
+        <Text>{date.toLocaleString()}</Text>
+      </TouchableOpacity>
+      {showPicker && (
+        <DateTimePicker
+          value={date}
+          mode="datetime"
+          //   is24Hour={true}
+          display="default"
+          onChange={handleDateChange}
+        />
+      )}
+    </View>
+  );
+};
+```
+
+```tsx [Skeleton.tsx]
+import React from "react";
+import { View, Animated } from "react-native";
+
+interface SkeletonProps {
+  height: number;
+  width: number;
+}
+
+export const Skeleton: React.FC<SkeletonProps> = ({ height, width }) => {
+  const animatedValue = React.useRef(new Animated.Value(0)).current;
+
+  React.useEffect(() => {
+    Animated.loop(
+      Animated.timing(animatedValue, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: false,
+      })
+    ).start();
+  }, []);
+
+  const opacity = animatedValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.5, 1],
+  });
+
+  return (
+    <View style={{ height, width }}>
+      <Animated.View
+        className="rounded-lg"
+        style={{
+          flex: 1,
+          backgroundColor: "#a9a9a9",
+          opacity,
+        }}
+      />
+    </View>
+  );
+};
+```
+
+and many others...
+
+### End
+
+In conclusion, i'll try to be as detailed as possible while listing the topics i've gained ample amount of knowledge in, wrt to React Native:
+
+- React Native Components
+  - Text, View, ScrollView, FlatList, TouchableOpacity, Image, Pressable, StyleSheet, useLayoutEffect, useWindowDimensions, Animated, Platform
+- React Navigation
+  - Nested Navigators, NavigationContainer, Native Stack, Drawer, Bottom Tabs, Protected and Unprotected Screens
+- Accessing Device Features like Camera and Location
+  - `expo/image-picker`, `react-native-maps`, `expo-location`
+- NativeWind
+- Reanimated
+- EAS
+
+thanks for taking the time to read, looking forward to seeing you here for the remaining part of the year!
+if at all you'd like to contact me or if you're interested in hiring me, you could use the contact form on my [portfolio](https://briha.xyz/contact), or you could email me at hello@briha.xyz.

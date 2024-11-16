@@ -1,0 +1,707 @@
+---
+title: "august"
+author: 
+  name: "brihadeesh"
+  link: "https://github.com/Brihadeeshrk"
+  handle: "Brihadeeshrk"
+time:
+  created: "2024-08-31T20:54:05.150Z"
+  updated: "2024-11-16T18:23:32.447Z"
+---
+
+# arch of multi service apps
+
+## what did we learn so far?
+
+- the big challenge in microservices is data
+- there are diff ways to share data btw services, we are going with the async approach
+- async comm focuses on communicating changes using events to an event bus
+- this enables services to be 100% self sufficient
+- docker makes it easy to package up services
+- kube is a pain to setup but makes it easy to scale and develop services
+
+## painful things from the prev app
+
+- lots of duplicated code - express setup, route handlers etc
+- really hard to imagine and picture the logic flow btw services
+- diff to remember what properties an event must have
+- difficult to test event flows
+- machine gets laggy running kube, docker etc
+- what if you were crazy and did some crazy operations simultaneously, that would (potentially) break our model
+
+## proposed changes
+
+| old prj                                                                                                       | new proj                                                                 |
+| ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| a lot of duplicated code                                                                                      | build a cenral lib as an npm module to share btw our diff projects       |
+| really hard to imagine and picture the logic flow btw services                                                | precisely define all the events in this shared package                   |
+| diff to remember what properties an event must have                                                           | use ts                                                                   |
+| difficult to test event flows                                                                                 | write tests for as much as possible                                      |
+| machine gets laggy running kube, docker etc                                                                   | run a kube cluster in the cloud and dev on it almost as quickly as local |
+| what if you were crazy and did some crazy operations simultaneously, that would (potentially) break our model | introduce a lot of code to handle concurrency between services           |
+
+## what are we going to build?
+
+- a ticketing app like bms
+- features
+  - users can list tickets for sale, instead of the business
+  - other users can purchase the ticket
+  - any user can do both operations
+  - when a user attempts to buy a ticket, the ticket is "locked" for 15mins. the user has 15mins to enter their payment info
+  - while locked no other user can purchase that ticket. after 15mins, the ticket will unlock
+  - ticket prices can be edited if they are unlocked
+
+## tables/ resources
+
+- user collection
+  - email
+  - password
+- ticket
+  - title
+  - price
+  - userId (ref to user)
+  - orderId (ref to order)
+- order
+  - userId (ref to user)
+  - status - created, cancelled, awaiting payment, completed
+  - ticketId
+  - createdAt
+- charge
+  - orderId (ref to order)
+  - status - created, failed, completed
+  - amount
+  - stripeId
+  - stripeRefundId
+
+## diff services
+
+- auth - handles everything related to user signup, signin, logout
+- tickets - ticket creation/ editing. this service knows whether a ticket can be edited or not
+- orders - order creation/ editing
+- expiration - watches for orders to be created, cancels them after 15mins
+- payments - handles credit card payments. cancels orders if payments fail, completes if payment succeed
+
+## understanding resource -> service relation
+
+- if you notice, except for expiration, we have a service for every resource
+- is this the best approach? probably not
+- its project specific and you have to think about it properly
+
+## events and arch design
+
+- events
+  - UserCreated
+  - UserUpdated
+  - OrderCreated
+  - OrderCancelled
+  - OrderExpired
+  - TicketCreated
+  - TicketUpdated
+  - ChargeCreated
+- architecture
+  - front end - next js
+  - we're going to have all the services interact with mongodb
+  - expiration is the only service that uses redis
+  - all of the services are going to talk to a NATS streaming server which is a prod grade event bus
+
+## project setup
+
+- the project has been setup in a diff gh repo, [ticket-booking-microservices-app](https://github.com/Brihadeeshrk/ticket-booking-microservices-app)
+- and a point i didnt mention before that i'm mentioning now, in dev when we need to spoof the ingress server by going to domains etc
+- (if the above point didnt make sense, in the above project we basically gave the url of posts.com, such that if the user goes to posts.com/endpoints he would be able to interact with our servers and services)
+- in order to do this, on mac we edit the `/etc/hosts` file by `vi /etc/hosts` or `code /etc/hosts`
+- and then we add a new record `127.0.0.1 posts.com`
+- and if we save, we get an error that says, retry with sudo (or something)
+- we enter the password and that's it, if we visit posts.com in the browser, we're indirectly hitting the localhost where our ingress server is running
+
+## auth service
+
+- an image was created and using skaffold, the containers, services and everything were created
+- one thing i observed is that, if i used ImplementationSpecific under pathType in the ingress-srv.yaml file, the server would work properly
+- but when i used Prefix, it all worked fine
+- so, just a note (not sure why, it isnt working. i havent done the research)
+
+# db management and modeling
+
+- using mongodb
+- every service we create will have its own db (one db per service)
+- and how are we going to interact with this db?
+- the db is going to be in its own pod, and we obv dont create pods as it is, so we create deployments, services etc
+- which is very similar to the auth-depl file
+- and this is the code for the `auth-mongo-depl.yaml` file, all the files we create will have the same naming convention, the service name-db-depl.yaml
+
+```yaml [auth-mongo-depl.yaml]
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-mongo-depl
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth-mongo
+  template:
+    metadata:
+      labels:
+        app: auth-mongo
+    spec:
+      containers:
+        - name: auth-mongo
+          image: mongo
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-mongo-srv
+spec:
+  selector:
+    app: auth-mongo
+  ports:
+    - name: db
+      protocol: TCP
+      port: 27017
+      targetPort: 27017
+```
+
+- the image name as you know is fetched from dockerhub, and the image name `mongo` is an official image by the mongo team and also as you know, it listens on port 27017
+
+## connecting to mongodb
+
+- when we run using skaffold, we get the deployed url: which is `auth-mongo-srv:27017/` and then after the / we give the name of the collection we'd like to give
+
+```ts [index.ts]
+import { json } from "body-parser";
+import express from "express";
+import mongoose from "mongoose";
+
+import { currentUserRouter } from "./routes/current-user";
+import { signInRouter } from "./routes/sign-in";
+import { signOutRouter } from "./routes/sign-out";
+import { signUpRouter } from "./routes/sign-up";
+import { errorHandler } from "./middlewares/error-handler";
+import { NotFoundError } from "./errors/not-found";
+
+const app = express();
+app.use(json());
+
+app.use(currentUserRouter);
+app.use(signInRouter);
+app.use(signUpRouter);
+app.use(signOutRouter);
+
+app.all("*", () => {
+  throw new NotFoundError();
+});
+app.use(errorHandler);
+
+const main = async () => {
+  // if (!process.env.MONGO_URI) {
+  //   throw new Error("MONGO_URI must be defined");
+  // }
+  try {
+    // await mongoose.connect(process.env.MONGO_URI);
+    await mongoose.connect("mongodb://auth-mongo-srv:27017/auth");
+    console.log("Connected to MongoDB");
+  } catch (err) {
+    console.error(err);
+  }
+
+  app.listen(3000, () => {
+    console.log("Auth listening on port 3000 🚀");
+  });
+};
+
+main();
+```
+
+## issues with ts + mongoose
+
+1. now, when creating a new user, the ts compiler doesnt know about the diff properties that need to be passed in order to create a proper document
+2. and another issue is, when we create the document, we may have properties like createdAt, updatedAt etc, that weren't a part of the type that we defined
+
+- so we have to exactly tell the ts engine what all properties we will expect
+- due to which, we'll have 2 schemas or types, one for the user collection and one for the individual user document
+
+solutions
+
+- we create a function that takes in only the required properties as input, and in that function, we create a user
+
+```ts [user.ts]
+import mongoose from "mongoose";
+
+// an interface that describes the properties that we need to create a new user
+interface UserAttrs {
+  email: string;
+  password: string;
+}
+
+const userSchema = new mongoose.Schema({
+  email: {
+    type: String,
+    required: true,
+  },
+  password: {
+    type: String,
+    required: true,
+  },
+});
+
+const User = mongoose.model("User", userSchema);
+
+const buildUser = (attrs: UserAttrs) => {
+  return new User(attrs);
+};
+
+export { User, buildUser };
+```
+
+- now it may be a bit annoying to import 2 diff exports from a file just to create a new user or smth no?
+- what if we created a function like `User.build({...})` ?
+- how do we do that? using the `schema-name.statics.custom-fn-name = functionCall here`
+- and if we do this also, the ts engine has no idea that such a custom fn even exists, so how do we fix that?
+- by creating another interface that tells the ts engine that such a function exists and it takes params such as this
+
+```ts [user.ts]
+import mongoose from "mongoose";
+
+// an interface that describes the properties that we need to create a new user
+interface UserAttrs {
+  email: string;
+  password: string;
+}
+
+// an interface that describes the properties a User model has
+interface UserModel extends mongoose.Model<any> {
+  build(attrs: UserAttrs): any;
+}
+
+const userSchema = new mongoose.Schema({
+  email: {
+    type: String,
+    required: true,
+  },
+  password: {
+    type: String,
+    required: true,
+  },
+});
+
+userSchema.statics.build = (attrs: UserAttrs) => {
+  return new User(attrs);
+};
+
+const User = mongoose.model<any, UserModel>("User", userSchema);
+
+export { User };
+```
+
+- but how do we fix the issue of any? the use of any would deny us the possibility of using intellisense or the . (dot) operator to access properties
+- so we need to define what a single user looks like
+- and this solves our 2nd issue too!
+
+```ts
+interface UserDoc extends mongoose.Document {
+  email: string;
+  password: string;
+}
+```
+
+- and wherever we have any, we replace that with UserDoc
+- `const User = mongoose.model<UserDoc, UserModel>("User", userSchema);` basically is saying that, every record inside the model will be of type UserDoc and the model in itself will be of type UserModel
+- the final script is like
+
+```ts [user.ts]
+import mongoose from "mongoose";
+
+// an interface that describes the properties that we need to create a new user
+interface UserAttrs {
+  email: string;
+  password: string;
+}
+
+// an interface that describes the properties a User model has
+interface UserModel extends mongoose.Model<UserDoc> {
+  build(attrs: UserAttrs): UserDoc;
+}
+
+// an interface that describes the properties a user document has
+interface UserDoc extends mongoose.Document {
+  email: string;
+  password: string;
+}
+
+const userSchema = new mongoose.Schema({
+  email: {
+    type: String,
+    required: true,
+  },
+  password: {
+    type: String,
+    required: true,
+  },
+});
+
+userSchema.statics.build = (attrs: UserAttrs) => {
+  return new User(attrs);
+};
+
+const User = mongoose.model<UserDoc, UserModel>("User", userSchema);
+
+export { User };
+```
+
+## pw hashing
+
+- we're not going to use bcrypt
+- we're going to implement our own hashing function along with a class that compares hashes (for signin)
+
+## auth strategies
+
+- handling auth strategies such as cookies, jwt etc is tricky when it comes to MS
+- there is no clear solution
+- there are many ways to do it, and no one way is "right" or "perfect"
+- now obv we want to send the token for every api call we make
+
+### option1
+
+- we contain the logic for inspecting the token, checking for validity etc in the auth service
+- and whichever service we're interacting with, will send a SYNCHRONOUS req to the auth service, which is a direct req to the auth service
+- and this auth service will return the appropriate response
+- but as we know the disadvantages of sync comm, what if one day the auth service went down, then no service will let users use the app at all since all the inspecting logic is housed inside auth
+
+### option1.1
+
+- any req coming into our application will go through the auth service, and then to the desired service
+- like a gateway
+
+### option2
+
+- each individual service knows how to validate a user token
+- everything is wrapped up inside one service
+- no outside dependency
+- might think there is no downside, and no, its not code reusability
+- we could simply extract that logic into a package and perform it, but there are clearly other issues
+- what is the issue you ask? lets say the user a is banned from using the app and the admin bans him in the auth service, every other service is stand alone and we cant forcefully delete the token from their browser, so there's always this issue of communication btw services
+- but, how would we fix this security issue?
+- make sure the token is only valid for some fixed time
+- but what if we ban them and they still have time till their token is invalid?
+- as soon as the admin bans, we can send out an event like UserBanned or something with their details to all the services, and then when we process the api req we can check if this user exists in the banned list, if yes, reject else process
+- and we could store this banned list in a temporary memory, why temporary? because users can be banned and unbanned anytime and we only want to keep these details as long as the token is valid, because if the token is expired, they anyway have to reach out and revalidate themselves
+
+### so which option?
+
+- option 2 but with some changes
+- why option 2? because we really need to make sure services are isolated and independant
+
+### secrets in kube
+
+- just like deployments and services, we can also create an object called secret that can be accessed in pods as an env var
+- to create a secret we follow this syntax
+  `k create secret generic jwt-secret --from-literal=JWT_KEY=asdf`
+- there are diff kinds of secrets we can have in k, another example would be a repo of images, generic just means its a general purpose secret
+- and this secret will be accessible to all the pods in our cluster
+- this command is an _imperative approach_ where we create objects on our own as opposed to the _declarative way_ where we wrote config files those objects in return create objects
+- the reason is because, we dont really want a config file to list out all of our secrets
+- what we could do is, we could write config files that refer to the env vars declared in the OS, and thats okay, but we normally and obv dont put our secrets in config files
+- and to get our secrets, we can use `k get secrets`
+- how do we make sure that this container gets access to this key? by modifying the depl file for auth
+
+```yaml [auth-depl.yaml]
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-depl
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth
+  template:
+    metadata:
+      labels:
+        app: auth
+    spec:
+      containers:
+        - name: auth
+          image: briha2101/auth
+          env:
+            - name: JWT_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secret
+                  key: JWT_KEY
+```
+
+- the name of the key we'd like to share the env key as in name, and then where do you want to get it from? the object with the name jwt-secret and the name of the key
+
+### response uniformity
+
+- similarly to how you standardised the error messages, responses need to be uniform too!
+- one way to do that is by simply reforming the way mongodb or the db sends us the response
+
+```ts [user.ts]
+const userSchema = new mongoose.Schema(
+  {
+    email: {
+      type: String,
+      required: true,
+    },
+    password: {
+      type: String,
+      required: true,
+    },
+  },
+  {
+    toJSON: {
+      transform(doc, ret) {
+        delete ret.password;
+        ret.id = ret._id;
+        delete ret._id;
+        delete ret.__v;
+      },
+    },
+  }
+);
+```
+
+- in the schema, we can pass options, and there is a function offered by Mongoose called toJSON that in a way, converts our object to JSON and gives it to us
+- mongoose does this by default and gives it to us, but by mentioning it here and making changes, we are overriding the def behavior
+- the transform fn is also in built and takes in the curr doc, which objects you want to return and another 3rd options param
+- we dont want to send the password, we dont want to send `__v`, and want to rename `_id` to just id
+
+# server testing
+
+- what is the scope of the test?
+  - test a single piece of code in isolation - ex: a middleware
+  - test how diff pieces of code work together - ex: a req flowing through diff middlewares and then the controller
+  - test how diff components work tog - how auth service interacts with mongodb or nats
+  - test how diff services work tog - launch auth and some other service together and see how they work (very very complex)
+  - etc
+- types of tests we're going to write for the auth service
+  - basic req handling
+  - unit tests around models etc
+  - event emitting + receiving testing
+- rn, this auth project has very simple req, express and mongodb, and we can pretty easily execute tests in our system, but what if tomo we're dealing with some complex ass project that has some complex db and some os restrictions?
+- we're going to use _JEST_
+- we're going to tell JEST the following
+  - start in-memory copy of mongodb
+  - start exp server
+  - use supertest lib to make fake reqs
+  - run assertions to make sure the req did the right things
+- we need to separate app and index.ts and do some minor refactoring if we want to use supertest
+- and we're going to be using a package called mongodb-memory-server
+- why m-m-s?
+  - great for testing- provides an isolated env for every test run
+  - speed
+  - ensures a clean and consistent state
+  - no ext dependency
+
+# skaffold dev error-note
+
+- if you come across this error, EVER
+
+```bash
+waiting for deletion: running [kubectl --context docker-desktop get -f - --ignore-not-found -ojson]
+ - stdout: ""
+ - stderr: "error: resource mapping not found for name: \"ingress-srv\" namespace: \"\" from \"STDIN\": no matches for kind \"Ingress\" in version \"\"\nensure CRDs are installed first\n"
+ - cause: exit status 1
+```
+
+- its probably because you havent created an image, or if you havent pushed the image properly to dhub
+
+# code sharing options between services
+
+## op1 - obv. copy-paste
+
+- few probs- a change in logic in one srv, will prompt you to again copy and paste in multiple srvs
+
+## op2 - git submodule
+
+- when you have one repo, and you want to include from another git repo here
+- one repo for auth stuff
+- one repo for ticketing stuff
+- one repo for common stuff
+- and then we pass in this common repo as a submodule
+- good but very complex and unnecessary
+
+## op3 - publishing as an npm pkg
+
+- wherever we need code, just install it as a dependancy and use it
+- but whenever there is a change in implementation, make the change, push the code to npm registry, go to the srv, update the package version by installing the latest one
+- create an a/c on npmjs
+- create an org inside of which youd like to publish packages, you can create just a package publicly, but this is a bit more organised
+- then create a common folder, run `npm init -y`, set the name of the project inside `package.json` as `@{orgname}/{packagename}`
+- there has to be a git repo, doesnt have to connected to a remote, just a git repo
+- so, `git init && gc -m 'INIT'`
+- then `npm publish --access public`
+- if we dont mention `--access public` its going to assume this is a priv pkg inside of our org and that means we have to pay
+
+## practices and approach
+
+- dont add ay settings such as tsconfig and all, that would cause conflicts with diff ts versions in other services
+- services might not be written in ts
+- so write the service in ts but publish it as js
+
+# NATS streaming server (event bus)
+
+- NATS and NATS STREAMING SERVER are 2 DIFF things
+- we are not using NATS
+  - NATS is a very basic implementation of event sharing
+  - NATS server is built on top of NATS
+- we're going to use the docker image `nats-streaming` to run it
+- a comparison with the event bus we created earlier
+  - earlier, we used axios to send events to the bus, which in return used axios to emit those events to other services
+  - in this case, we're going to use a node package called `node-nats-streaming` and this has a socket-type connection code syntax, we're going to emit as well as receive events in our node server using this package
+  - now, nats is going to ask us to subscribe to certain channels and events are emitted to certain channels
+  - in nats, we're going to create a bunch of events/topics (these 2 mean the same)
+  - then while publishing events, we will say for eg: publish this to the ticketing:updated channel and this event will only be sent to those services that are listening for events in that channel
+  - so only services that care are going to receive them
+  - this nats will store all the events in memory and this will help when some service goes down and/or we add a new service
+  - an example of above and why its helpful; say we add a new service and say give me all the events so far, now this service is also up to date with whatever happened so far
+  - nats stores data in memory by default, but we can customise it to store the data in files in our hdd, mysql or postgres
+- whenever we deal with nats publishers (ones that publish events), we basically have 2 pieces of info: 1- the data itself, and 2- the channel we're going to publish this event to
+- when we publish this event, itll tell the nats server, that to whoever is listening/ or has subscribed to this event, send this event to them
+- and when we create a listener, we subscribe to certain events and this again tells the nats server that, if any event has been published for this event, lmk
+- a simple ex of we can publish events
+- the data has to be in JSON format
+
+```ts [publisher.ts]
+const stan = nats.connect("ticketing", "abc", {
+  url: "http://localhost:4222",
+});
+
+stan.on("connect", () => {
+  console.log("🚀 Publisher connected to NATS");
+
+  const data = JSON.stringify({
+    id: 122,
+    title: "title",
+    price: 10,
+  });
+
+  stan.publish("ticket:created", data, (err) => {
+    if (err) {
+      return console.log("🚨 Error publishing message", err);
+    }
+    console.log("🚀 Message published");
+  });
+});
+```
+
+- the publish fn optionally takes in a 3rd param, thats a callback fn
+- and the data that we send is commonly referred to as a `message`
+- and how do we deal with listeners?
+
+```ts [listener.ts]
+import nats from "node-nats-streaming";
+
+console.clear();
+
+const stan = nats.connect("ticketing", "123", {
+  url: "http://localhost:4222",
+});
+
+stan.on("connect", () => {
+  console.log("🚀 Listener connected to NATS");
+
+  const subscription = stan.subscribe("ticket:created");
+
+  subscription.on("message", (msg) => {
+    console.log("🚀 Message received", msg);
+  });
+});
+```
+
+- we're going to type annotate `msg` with `Message` from `node-nats-server` and if we inspect the type def file, there are some fns that are imp to us
+
+1. getSubject() - gives the channel/ subject the message was pub to
+2. getSequence() - gives the number of this event, all events start with 1, the 2nd will have 2 and so on
+3. getData() - returns the data that was sent along with the message
+
+- getData() returns either a string or a Buffer, so when we work with it, we have to do a simple check before we write code
+
+```ts [listener.ts]
+import nats, { Message } from "node-nats-streaming";
+
+console.clear();
+
+const stan = nats.connect("ticketing", "123", {
+  url: "http://localhost:4222",
+});
+
+stan.on("connect", () => {
+  console.log("🚀 Listener connected to NATS");
+
+  const subscription = stan.subscribe("ticket:created");
+
+  subscription.on("message", (msg: Message) => {
+    const data = msg.getData();
+
+    if (typeof data === "string") {
+      console.log(
+        `Received event #${msg.getSequence()} on subject: ${msg.getSubject()}`
+      );
+      console.log(data);
+    }
+  });
+});
+```
+
+- now lets say one service is getting a lot of traction, so one approach is to give it more CPU power or RAM
+- or we could also horizontally scale it by making one more copy of it
+- now the server would be identical to this one right?
+- so then it should technically connect to our NATS server no? - NO!
+- thats because NATS keep track of all the clients that are connected to it, and if you see this line `const stan = nats.connect("ticketing", "123", {})`, the string 123 is whats known as a clientID
+- so if we run another copy of the service, it will fail as there will be a duplicate clientID and will face this error
+
+```bash
+Error: Unhandled error. ('stan: clientID already registered')
+```
+
+- in kube, there is a way of handling it, but for now lets use a randomly generated str
+- and now, we have no problem and can have as many listeners as we want
+
+```ts
+import {randomBytes} from 'crypto'
+
+const stan = nats.connect("ticketing", randomBytes(4).toString("hex"), {
+//...
+```
+
+- now since we have 2 listeners that are subscribed to the same event, it doesnt make sense to send them BOTH the same events
+- this is where we introduce something called QUEUE GROUPS
+- and this queue group will be created inside the channel
+- we can have multiple groups associated with one channel
+- lets say we create a queue group called `q123`
+- now, our listeners would have to join the queue
+- and then the queue group is going to look at our listeners and send it to one in random
+- and this is how we create a queue group
+
+```ts [listener.ts]
+const subscription = stan.subscribe(
+  "ticket:created",
+  "orders-service-queue-group"
+);
+```
+
+- and now if we publish events, itll be sent in random to one of the listeners, and you can check this by checking the getSequence() number, you'll notice that the same message is not being sent to all listeners
+- now only the first 2 params are strings, we can optionally add a lot more config and this would be a variable of type `stan.subscriptionOptions()`
+- and now this isnt an object, more over, we chain the options we want
+
+```ts [listener.ts]
+const options = stan.subscriptionOptions().setManualAckMode(true);
+
+const subscription = stan.subscribe(
+  "ticket:created",
+  "orders-service-queue-group",
+  options
+);
+```
+
+- but what are some options we're going to use?
+- now, whenever we publish a message, a soon as a listener gets it, its acknowledged and its considered that the message was received. now this is the DEFAULT BEHAVIOUR
+- lets say, we're pushing the message off to the DB and we lose the connection with the DB, this message is now lost, and there is no way we can get it again
+- which is why we set one option without fail and that is the `setManualAckMode(true)`
+- so this way, we can ack the message only after successful processing of our msg
+- and if we dont ack, itll wait for some time (30s) and send it to a diff listener in the queue, or the same listener
+- and how do we manually ack it? `msg.ack();`

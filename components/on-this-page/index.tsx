@@ -6,8 +6,12 @@ import { motion } from "framer-motion";
 import React, { useCallback, useEffect, useState } from "react";
 
 export const TableOfContents = () => {
-  const [headings, setHeadings] = useState<{ id: string; text: string; level: string }[]>([]);
-  const [visibleHeadings, setVisibleHeadings] = useState<Set<string>>(new Set());
+  const [headings, setHeadings] = useState<
+    { id: string; text: string; level: string }[]
+  >([]);
+  const [visibleHeadings, setVisibleHeadings] = useState<Set<string>>(
+    new Set(),
+  );
 
   const getHeadings = useCallback(() => {
     return Array.from(document.querySelectorAll("h1, h2, h3"))
@@ -45,7 +49,10 @@ export const TableOfContents = () => {
       setVisibleHeadings(new Set(visibleSet));
     };
 
-    const observer = new IntersectionObserver(handleIntersection, observerOptions);
+    const observer = new IntersectionObserver(
+      handleIntersection,
+      observerOptions,
+    );
 
     for (const heading of collectedHeadings) {
       const element = document.getElementById(heading.id);
@@ -89,7 +96,7 @@ export const TableOfContents = () => {
         className={cn(
           "top-[10rem] right-auto left-[2rem] hidden",
           "xl:top-[6rem] xl:right-[6rem] xl:left-auto xl:block",
-          "fixed mt-0 h-full w-48 justify-start space-y-4 transition",
+          "fixed mt-0 h-full w-48 justify-start space-y-4 transition overflow-y-auto",
         )}
       >
         <div className="mt-0 flex flex-col gap-0">
@@ -99,7 +106,8 @@ export const TableOfContents = () => {
                 type="button"
                 onClick={() => scroll(heading.id)}
                 className={cn({
-                  "mt-0 ml-2 border-l border-l-gray-4 py-1 text-left text-muted opacity-100 transition ease-in-out hover:opacity-50": true,
+                  "mt-0 ml-2 border-l border-l-gray-4 py-1 text-left text-muted opacity-100 transition ease-in-out hover:opacity-50":
+                    true,
                   "text-bold text-gray-12": visibleHeadings.has(heading.id),
                   "pl-4": heading.level === "h1",
                   "pl-6": heading.level === "h2",
