@@ -1,0 +1,871 @@
+---
+title: "React Testing Library"
+time:
+  created: "2025-04-18T19:24:46.167Z"
+  updated: "2025-04-18T09:56:06.854Z"
+author: 
+  name: "briha"
+  link: "https://github.com/Brihadeeshrk"
+  handle: "Brihadeeshrk"
+---
+
+so, for this, we're going to come across a vite app shows 6 random products as soon as the app loads, now every product has a thumbnail, a category, a title, a price and a "add to cart" button
+if the user scrolls down, theres a "Load More Products" button that gives the user 6 more products.
+
+so what sort of tests can we write for this project?
+for this lets understand the processes that occur
+app loads ➡️ 6 products are shown ➡️ press load more button ➡️ 6 more products are shown
+
+so if you think about it, we can write 2 tests in this scenario
+one test to check if 6 products are shown as soon as the app launches
+and one more test to check if 6 more products are shown when we click on the button
+
+so in our project we create a file called `App.test.js`
+
+```js
+import { render, screen, waitFor } from '@testing-library/react';
+import user from '@testing-library/user-event';
+import App from './App';
+
+
+test('shows 6 products by default', async () => {
+	// going to write a fn thats going to render our Apo component
+	render(<App />);
+	const titles = await screen.findAllByRole("heading")
+	expect(titles).toHaveLength(6)
+});
+
+test('Clicking on the button shows 6 more products', async () => {
+	render(<App />)
+	const button = await screen.findByRole("button", {
+		name: /load more/i
+	})
+	user.click(button)
+	await waitFor(async() => {
+		const titles = await screen.findAllByRole("heading")
+		expect(titles).toHaveLength(12)
+	})
+});
+```
+
+lets start off with a list of packages that we'll end up using when we talk about testing a react application.
+1. `@testing-library/react` - takes our component and renders it, and gets it ready for testing. 
+2. `@testing-library/user-event` - helps simulate user input like typing and clicking. for this, BTS we're using another lib called `@testing-library/dom`. now, this package is already included in our proj with `@testing-library/react` and this `/dom` package helps us find eles that are rendered by our components
+3.  `jest` - runs our tests, reports results
+4. `jsdom` - simulates a browser when running in a node env
+
+now, when we just ran `yarn test` how is it that all the tests were run automatically?
+so `jest` finds all files in the src folder that end with `.spec.js`, or `.test.js` or are placed in a folder called `__test__`
+## test writing process for the first project
+1. pick out one component to test in isolation
+2. make a test file for the component
+3. decide what the imp parts of the component are
+4. write a test to make sure all the parts of the components work as expected
+5. run test at cmdline
+
+### WRT UserForm component
+what are the most imp parts of this component?
+1. show 2 inputs and 1 button
+2. enter a name + email and then submitting the form calls the onUserAdd callback to be called
+
+```jsx
+import { render, screen } from "@testing-library/react";
+import user from "@testing-library/user-event";
+import UserForm from "./UserForm";
+
+test("check for 2 inputs and a button", () => {
+	// render the component
+	render(<UserForm />);
+	// check if the inputs and the button are being rendered
+	const inputs = screen.getAllByRole("textbox");
+	const button = screen.getByRole("button");
+	// assertion: to make sure that the component is behaving as expected
+	expect(inputs).toHaveLength(2);
+	expect(button).toBeInTheDocument();
+});
+```
+
+## queries
+- a super imp part of testing is finding the ele that our component has created.
+- query fns are how we are going to find eles that our component has rendered 
+- tedious to find eles
+- there are about 48 fns that are used to find eles
+- these fns are provided by the RTL Query System
+- some ones that are most probably used (no need to memorise)
+	- screen.getByRole()
+	- screen.findAllByDisplayValue()
+	- screen.queryAllByRole()
+	- screen.queryByRole()
+	- screen.findByRole()
+	- screen.queryByLabelText()
+	- screen.findAllByTitle()
+	- screen.findByTitle()
+	- screen.getByLabelText()
+
+### understanding the queries we wrote earlier in the UserForm test
+```jsx
+const inputs = screen.getAllByRole("textbox");
+const button = screen.getByRole("button");
+```
+- the role is referring to something known as an `ARIA role`
+- Aria roles clarify the purpose of a HTML ele
+- mostly used by screenreaders
+- many html eles have an 'implicit', or automatically assigned role
+- eles can be assigned a role manually also and even trained engineers do this incorrectly at times (not advised to do)
+
+now, some roles are:
+- 'heading' ➡️ h1 h2 h3 h4 h5 h6
+- 'list' ➡️ ul li
+- 'button' ➡️ button
+- 'link' ➡️ a
+- 'textbox' ➡️ input, type="text"
+- ... and much more
+
+finding eles by this 'role' method is the preferred way of testing, and RTL pushes us to use this method
+
+## assertions
+basically telling the test file the expected behaviour
+so to test this assertion we use the `expect` keyword which is a global keyword
+
+and this expect always takes in a value and to this value we attach a fn called as a matcher, ie something like `.toHaveLength(2)` etc
+there are MANY matchers, some provided by jest, some provided by RTL
+
+now, WRT the UserForm component, we're getting the onUserAdd prop from the parent App, but when we run this test file as is, notice that we aren't passing a prop
+so then technically, onUserAdd is undefined, and this is why the test would fail 
+
+so what we can do is, we can pass the onUserAdd prop and give it an empty fn 
+`<UserForm onUserAdd={() => {}} />`
+now there is a small problem, now the goal of this test was to make sure that the test is called with the email and name
+so we need to write a function to verify that its being called and also make sure that its being called with the right args
+so there is a way to do this *NOTE: THIS IS NOT THE BEST IMPLEMENTATION BUT AN IMPLEMENTATION NEVERTHELESS*
+we can have an array called argList that stores all the arguments and also a function to store all these args to the array
+```jsx
+const argList = []
+const callback = (...args) => {
+	argList.push(args)
+}
+```
+and we pass this callback to the component
+
+so this is the test so far
+```jsx
+test("should call onUserAdd when the form is submitted", async () => {
+	// NOT THE BEST IMPLEMENTATION
+	const argList = [];
+	const callback = (...args) => {
+		argList.push(args);
+	};
+	// try to render the component
+	render(<UserForm onUserAdd={callback} />);
+	// find the 2 inputs
+	const [nameInput, emailInput] = screen.getAllByRole("textbox");
+	// simulate typing in a name
+	await user.click(nameInput);
+	await user.keyboard("test name");
+	// simulate typing in a email
+	await user.click(emailInput);
+	await user.keyboard("test@test.com");
+	// find the button
+	const button = screen.getByRole("button");
+	// simulate clicking the button
+	await user.click(button);
+	// assertion to make sure onUserAdd is called with email and name
+	expect(argList).toHaveLength(1);
+	expect(argList[0][0]).toEqual({ name: "test name", email: "test@test.com" });
+});
+```
+
+## mock fns
+- its a fake fn that doesnt do anything when its called
+- it gets recorded whenever we call it and the args it was called with
+- used very often when we need to make sure a component calls a callback fn 
+- so the mock fn we write is going to store 2 things: how many times it was called, and the args it recvd
+-  so then we can make assertions to make sure that our mock fn was called once and that were getting the correct data also 
+- how do we define a mock fn? `const mock = jest.fn()`
+
+and jest has some inbuilt matchers to make sure a mock fn gets called and to make sure it gets the appr. props
+```jsx
+// makes sure the mock was called
+expect(mock).toHaveBeenCalled()
+// what args it shouldve received
+expect(mock).toHaveBeenCalledWith({
+	name: "test name",
+	email: "test@test.com",
+});
+```
+
+another issue we'll have in time, in our UserForm component currently we've typed just 2 input fields name and email in that order, but what if tomo we reearrange it and add more fields? then this line `const [nameInput, emailInput] = screen.getAllByRole("textbox");` would fail the test as it is brittle and hardcoded.
+so how do we fix this?
+for labels we can provide a htmlFor attr. such that when we tap/click on this label, the input field is active
+```html
+<label htmlFor="email">enter email</label>
+<input type="email" id="email" placeholder="email" />
+```
+
+so one way we can target this element can be `screen.getByLabelText(/enter email/i)` or `screen.getByRole('textbox', {name: /enter email/i })`
+
+RTL recommends we use roles, so thats what well be using
+the 'i' in the end is basically telling to ignore case sensitivity
+
+so now we have a flexible test, such that if we reorder the components, add more components, this test now, wont fail
+and this is the code so far
+```jsx
+test("should call onUserAdd when the form is submitted", async () => {
+	const mock = jest.fn();
+	// try to render the component
+	render(<UserForm onUserAdd={mock} />);
+	// find the 2 inputs
+	const nameInput = screen.getByRole("textbox", { name: /name/i });
+	const emailInput = screen.getByRole("textbox", { name: /email/i });
+	// simulate typing in a name
+	await user.click(nameInput);
+	await user.keyboard("test name");
+	// simulate typing in a email
+	await user.click(emailInput);
+	await user.keyboard("test@test.com");
+	// find the button
+	const button = screen.getByRole("button");
+	// simulate clicking the button
+	await user.click(button);
+	// assertion to make sure onUserAdd is called with email and name
+	expect(mock).toHaveBeenCalled();
+	expect(mock).toHaveBeenCalledWith({
+		name: "test name",
+		email: "test@test.com",
+	});
+});
+```
+
+### what to do if you dont know which query to use
+so RTL provides a fn `screen.logTestingPlaygroundURL()` which is a playground that lets us find the query to help us with the task at hand
+and what this'll do is, itll spin up a playground of the component we're trying to test and it'll help us by suggesting possible queries we can use
+
+now at times, we may not be able to select a particular element, which is when we can try styling it, to see if that works
+and 9/10 times we'll most probably go for the suggested query
+
+sometimes finding eles by role just doesnt work well
+dont obsess over getting the "right" query
+
+here are 2 "escape hatch" ways to find eles when the preferred role approach doesnt work
+
+1. fallback #1 - to find eles using an attr called `data-testid`
+   - now if we want to check the # of rows within tbody, we can go to the UserList component, and give the tbody this attr `data-testid="users"`
+   - what does this mean? by giving the above prop, we're gaining the ability to target this ele and find whats within it using `{within}` from `@testing-library/react`
+     ```jsx
+	import { render, screen, within } from "@testing-library/react";
+	
+	const rows = within(screen.getByTestId("users")).getAllByRole("row");
+	```
+  - but this is not advised as we literally have to change the codebase JUST so that we can test it 
+
+2.  fallback #2 - container.querySelector()
+-  so when we call the render fn we're returned multiple things and we can destructure that and take the `{container}` property
+- now, if we go back to our playground you'll see that the entire component is wrapped up inside a `<div>` now this div is our container
+- and we can perform our normal querySelectors on this container
+- but when we run `const table = container.querySelector("table");` we get a red underline in vscode. this is not an error but just a warning asking to avoid this approach and use roles instead
+- and we can simply run the following query to check
+
+```jsx
+// trying to target tr elements inside tbody
+const rows = container.querySelectorAll("tbody tr");
+expect(rows).toHaveLength(users.length);
+```
+
+and this would still have the curly underline as it still recommends us to use roles, but if you want to bypass this, have a comment above the underlined line and type the following `// eslint-disable-next-line`
+
+- so the whole point is, dont spend too much time trying to find roles to use. spend at most 5-6mins to find a role and then test it
+
+
+### testing the userlist component
+we can run the playground tool to find out which role to choose, and if we click on the name, we can see that if we use the role of "cell" we can check if the name and email are being rendered.
+but there are so many cells, but we can also optionally pass a 2nd param, a value, like this
+```jsx
+const row = screen.getByRole("cell", {name: user.name })
+```
+
+so in the end we can iterate over the list of users and find out if this user is being rendered or not simply by using the `.toBeInTheDocument()` query
+final test:
+```jsx
+  
+
+test("render the email and name of every user", () => {
+	const users = [
+		{ name: "Sam", email: "test1@test.com" },
+		{ name: "Jane 2", email: "test2@test.com" },
+	];
+	render(<UserList users={users} />);
+	
+	for (const user of users) {
+		const name = screen.getByRole("cell", { name: user.name });
+		const email = screen.getByRole("cell", { name: user.email });
+		expect(name).toBeInTheDocument();
+		expect(email).toBeInTheDocument();
+	}
+});
+```
+
+one issue i ran into was that, initially both the dummy users had the same email, so when that happened, the test failed
+
+### beforeEach()
+
+so when we have multiple tests in a file, lets just say before a particular you want some setup done. thats where the beforeEach() fn comes into play
+
+so whenever jest comes across a beforeEach block, its going to run it before EVERY TEST
+however it IS STRICTLY ADVISED THAT WE DO NOT render components here. its not an error, but a WARNING by rtl
+```jsx
+beforeEach(() => {
+	// some setup
+})
+```
+
+### testing the App
+```jsx
+import { render, screen } from "@testing-library/react";
+import user from "@testing-library/user-event";
+import App from "./App";
+
+test("can receive a new user and show it on the screen", async () => {
+	render(<App />);
+	
+	const nameInput = screen.getByRole("textbox", { name: /name/i });
+	const emailInput = screen.getByRole("textbox", { name: /email/i });
+	
+	await user.click(nameInput);
+	await user.keyboard("brihadeesh");
+	
+	await user.click(emailInput);
+	await user.keyboard("brihadeesh@test.com");
+	
+	const button = screen.getByRole("button", { name: /add user/i });
+	await user.click(button);
+	
+	const name = screen.getByRole("cell", { name: "brihadeesh" });
+	const email = screen.getByRole("cell", { name: "brihadeesh@test.com" });
+	
+	expect(name).toBeInTheDocument();
+	expect(email).toBeInTheDocument();
+});
+```
+
+### to use the rtl cli book
+to use the rtl cli book run `npx rtl-book server filename.js` now this filename can be any file name, basically all notes you type up will be saved here
+and to re run this test book, you can just re run the same cmd again
+
+### when to use which query?
+there are like 3 types of queries and they start with:
+- getBy / getAllBy
+- findBy / findAllBy
+- queryBy / queryAllBy
+
+- to find a single element we use getBy, findBy, queryBy
+- to find multiple elements we use getAllBy, findAllBy, queryAllBy
+
+when to use each?
+- to prove an ele exists? getBy / getAllBy
+- to prove an ele DOESNT exist? queryBy / queryAllBy
+- to make sure an ele EVENTUALLY exists - findBy / findAllBy
+
+if we use getBy and we find ele that is 0 or more than 1, we get an error and our test FAILS
+
+now how do you write an expect block to test for failure?
+```
+expect(() => screen.getByRole("textbox")).toThrow()
+```
+
+findBy - operates async and it watches the op of our component over a span of 1s by default and every 50ms or so its going to try and find an ele, if it doesnt find it by the end of that 1s, its going to throw an error
+
+here are some snippets of tests of how getBy queryBy and findBy react to finding
+- 0 eles
+- 1 ele
+- more than 1 ele
+
+### 0 eles
+
+```js
+test("how getBy, findBy and queryBy react to finding 0 elements", async () => {
+	render(<ColorList />)
+	
+	// getBy
+	expect(() => screen.getByRole("textbox")).toThrow()
+	
+	// queryBy
+	expect(screen.queryByRole("textbox")).toEqual(null)
+	
+	// findBy
+	let errorThrown = false
+	try {
+		await screen.findByRole('textbox')
+	} catch (error) {
+		errorThrown = true
+	}
+	expect(errorThrown).toEqual(true)
+})
+```
+- now since the color list component doesnt have a textbox, we've to pass a callback fn to getByRole. otherwise itll throw an error
+- and queryBy returns null if the ele doesnt exist, so thats why we have a toEqual(null) there
+- and since findBy waits for a second to run, we put it in a catch block and catch the error to prevent the test from failing
+
+### 1 ele
+```js
+test("how getBy, findBy and queryBy react to finding 0 elements", async () => {
+	render(<ColorList />)
+	
+	expect(screen.getByRole('list')).toBeInTheDocument()
+	
+	expect(screen.queryByRole('list')).toBeInTheDocument()
+	
+	expect(
+		await screen.findByRole('list')).toBeInTheDocument()
+	})
+```
+
+- pretty straightforward test
+
+### more than 1 ele
+```js
+test("how getBy, findBy and queryBy react to finding 0 elements", async () => {
+	render(<ColorList />)
+	
+	// getBy
+	expect(() => screen.getByRole("listitem")).toThrow()
+	
+	// queryBy
+	expect(() => screen.queryByRole("listitem")).toThrow()
+	
+	// findBy
+	let errorThrown = false
+	try {
+		await screen.findByRole('listitem')
+	} catch (error) {
+		errorThrown = true
+	}
+	expect(errorThrown).toEqual(true)
+})
+```
+
+
+## looking for multiple eles
+when looking for multiple eles, we use getAllBy, findAllBy and queryAllBy
+```js
+test("how getAllBy, findAllBy and queryAllBy ", async () => {
+	render(<ColorList />)
+	
+	// getBy
+	expect(screen.getAllByRole("listitem")).toHaveLength(3)
+	
+	// queryBy
+	expect(screen.queryAllByRole("listitem")).toHaveLength(3)
+	
+	// findBy
+	expect(await screen.findAllByRole("listitem")).toHaveLength(3)
+})
+```
+
+## query fn suffixes
+always prefer to use fns that end with byRole. use others if byRole is not an option
+- ByRole - finds eles based on their implicit or explicit ARIA role
+- ByLabelText - find form eles based on the text their paired labels contain
+- ByPlaceholderText - find form eles based upon their placeholder text
+- ByText - find eles based on the text they contain
+- ByDisplayValue - find eles based on their current value
+- ByAltText - find eles based on their alt attr
+- ByTitle - find eles based on their title attr
+- ByTestId - find eles based on their data-testid attr (not really preferred, but if no option. go for it)
+
+## matchers in jest
+note: you cant do a getByRole for a form component, if you want to get it, you must assign an ARIA label to it
+matchers are what you chain to the `expect` block
+
+in order to create a custom matcher, you need to first create a function with name of the matcher you wish to have
+then this matcher by default gets 2 params, let me explain with an ex
+`expect(container).toHaveLength(3)`
+with the above example, if we decide to use a custom matcher, we'd get the container AND the value 3 as params
+and how do we extend this and tell jest that we have such a matcher?
+
+after we define the custom matcher, we simply do
+
+expect.extend({name-of-matcher})
+
+and then, we can use it!
+
+but note that, this function must have a return block with the foll params
+```js
+return {
+	pass: boolean,
+	message: () => string //message to show the user in case the test fails
+}
+```
+
+## router context
+when dealing with component tests in react porojs that use react router, it is essential that we wrap the component to be tested within a pair of router tags.
+otherwise you'll get an err that says, an err occurred in the Link component/ something related to useHref being used in the context of a Router
+```jsx
+render(
+	<MemoryRouter>
+		<RepositoriesListItem repository={repository} />
+	</MemoryRouter>
+)
+```
+
+and there are 3 types of routers:
+1. BrowserRouter - stores the curr url in the address bar
+2. HashRouter - stores the url in the # part of the address bar
+3. MemoryRouter - stores the curr url in memory
+
+many blogs/articles recc. memoryRouter for testing purposes. but eventually well replace it
+
+when we wrap the component within a router component, the test passes but we still get an error, something regarding `act(...)`
+
+➡️ if youre fetching data using useEffect and write tests for that component, you will eun into a lot of act warnings
+
+### important items to keep in mind
+
+1. unexpected state updates in a testing env are bad
+   - an example of this situation, a button click calls a fn that fetches a list of users
+   - this is how a normal flow would be, wrt testing, a testing flow of sorts
+   - find button ➡️ simulate button click ➡️ calls fn ➡️ fake data fetch occurs. BUT AFTER THIS, the control immediately tries to find users on the screen and doesnt wait at all, even though this is supposed to be an ASYNC event
+   - so after the fetch occurs ➡️ checks the screen for users ➡️ NO USERS FOUND! TEST FAILS ➡️ some time passes ➡️ fake data req is completed ➡️ users state is filled ➡️ users are displayed
+   - so its like they're failing when they should be passing or they're passing when they should fail. either way its bad
+   
+1. the act fn defines a window in time where state updates can and should occur
+   - so if any state changes happen within this act window, react is happy and this act fn runs and process all state updates + useEffects before exiting the act fn
+   - but if any change happens outside the act, we'll see the warnings 
+1. RTL uses 'act' bts for us
+   - whenever we use findBy, findAllBy, waitFor, user.click, user.keyboard, since these are all async calls, RTL by default uses act BTS
+2. to solve act warnings, you should use findBy. usually you shouldnt follow the advice of a warning
+   - what this means is that, the warnings would say you need to use act() as a function, but dont.
+   - we dont use act along with RTL
+
+### options for solving act warnings
+steps are from best to worst
+
+1. use a findBy or findAllBy to detect when the component has finished its data fetching
+   - now wtf and how tf will i know that i should use findBy and findAllBy?
+   - but one thing you should remember is, WHENEVER you have a component that is fetching and updating state in a useEffect. you should be prepared for ACT warnings
+   - so one thing that you could do is, write a pause fn that will purposely pause the code execution and then what you can do is have a screen.debug() before and after the pause
+   - that way you can inspect the html and see what has changed from before and after the pause fn
+   - once you know what has changed, you can write a find fn of that role and you go deeper in specificity by giving it a name
+```jsx
+import { screen, render } from "@testing-library/react";
+import RepositoriesListItem from "./RepositoriesListItem";
+import { MemoryRouter } from "react-router-dom";
+
+function renderComponent() {
+	
+	const repository = {
+		full_name: "briha/project in py",
+		language: "js",
+		description: "this is a desc",
+		owner: "facebook",
+		name: "briha",
+		html_url: "https://github.com/facebook/react",
+	};
+	
+	render(
+		<MemoryRouter>
+			<RepositoriesListItem repository={repository} />
+		</MemoryRouter>
+	);
+}
+
+test("to check if the link is being shown in the list item", async () => {
+	renderComponent();
+	await screen.findByRole("img", { name: /js/i });
+});
+
+  
+
+const pause = () => {
+	return new Promise((resolve) => {
+		setTimeout(() => {
+			resolve();
+		}, 100);
+	});
+};
+
+```
+1. use an act to control when the data fetching req gets resolved
+2. use a module mock to avoid rendering the troublesome component
+   - this method is to completely ignore the component that is giving us the act warning
+   - so one way to ditch is by using jest's mock functions, something we discussed earlier also
+   - so what we do is, for the jest function, we pass in the file to path that we want to ignore relative to the path where this test file exists, and then after that we have to tell what we want to render instead of this component
+   - for ex: if i want to ignore a component called A, i would create a mock fn, lets say called MA. now, this MA will have the path to A, and whichever component is calling this A component, will instead now call MA and will display whatever we put inside it
+   - so in a way, we're replacing the contents of that component with a component of our own
+```jsx
+jest.mock("../tree/FileIcon", () => {
+	return () => {
+		return <div>FileIcon</div>;
+	};
+});
+```
+1. use act with a pause 
+   - when you absolutely cannot get the act function to go away, you can use act with a pause
+   - and normally you wouldnt ever use this in a prod grade project, but literally worst case solution is here
+```jsx
+test("to check if the link is being shown in the list item", async () => {
+	renderComponent();
+	
+	await act(async () => {
+		await pause();
+	});
+	
+});
+
+const pause = () => new Promise((res) => setTimeout(res, 100));
+```
+
+### coming to the test itself
+now time to test to check if the link exists or not
+for that, we can write 
+```jsx
+  
+test("to check if the link is being shown in the list item", async () => {
+	const { repository } = renderComponent();
+	await screen.findByRole("img", { name: /js/i });
+	const link = screen.getByRole("link", { name: /github repository/i });
+	expect(link).toHaveAttribute("href", repository.html_url);
+});
+
+  
+
+test("shows a fileicon with the appropriate icon", async () => {
+	const { repository } = renderComponent();
+	const icon = await screen.findByRole("img", { name: /js/i });
+	expect(icon).toHaveClass("js-icon");
+});
+
+  
+
+test("shows a link to the code editor page", async () => {
+	const { repository } = renderComponent();
+	await screen.findByRole("img", { name: /js/i });
+	const link = await screen.findByRole("link", {
+		name: new RegExp(repository.owner.login),
+	});
+	expect(link).toHaveAttribute("href", `/repositories/${repository.full_name}`);
+});
+```
+
+
+## tests dealing with data fetching
+we never want to actually make a network req when in a test env
+why?
+1. making reqs is usually slow, slow as in may take a few ms, but still in context of how fast testing is, its slow
+2. and if we make reqs, it might change the data and the test might fail
+3. we use fake or mock data fetching processes
+
+### options for data fetching
+1. mock the file that contains the data fetching code
+   - not really advised because, fine, we can mock it using jest. but whats to say we're calling this hook correctly? or we're getting the data from it correctly
+   - which is why we usually go for step 2 or step 3
+   - but that doesnt mean, we dont use step 1, we do but rarely
+1. use a lib to 'mock' axios and get axios to return fake data
+   - what this means is, we're still going to call the actual hook. but when its time to make the req, we intercept and request and we resolve it manually
+   - so to do this, we use a lib called MSW- mock service worker
+   - but how does this fit in? we're still going to make the api request and all. but msw is going to intercept this and grab the req and automatically respond to it
+   - msw setup:
+	   - create a test file
+	   - understand the exact url, method and return val of the req that our component makes
+	   - create a msw handler to intercept that req and return some fake data for our component to use
+	   - setup beforeAll, afterEach and afterAll hooks in the test file
+		   - now these fns are there to make sure msw is actually being called
+	   - in the test, render the component. wait for the ele to be visible
+1. create a manual mock of axios
+
+what we've written so far
+```jsx
+import { render, screen } from "@testing-library/react";
+import { setupServer } from "msw/node";
+import { rest } from "msw";
+import { MemoryRouter } from "react-router-dom";
+import HomeRoute from "./HomeRoute";
+
+const handlers = [
+  rest.get("/api/repositories", (req, res, ctx) => {
+    const language = req.url.searchParams.get("q").split("language:")[1];
+
+    return res(
+      ctx.json({
+        items: [
+          { id: 1, full_name: `${language}_one` },
+          { id: 2, full_name: `${language}_two` },
+        ],
+      })
+    );
+  }),
+];
+
+const server = setupServer(...handlers);
+
+// going to be executed once before running all the tests in this file
+beforeAll(() => {
+  server.listen();
+});
+
+// going to be run after every individual test in this file, regardless of it passing or failing
+afterEach(() => {
+  // going to reset the handlers to their initial state
+  // note that we arent really modifying this or anything, but its just something that we have to give
+  server.restoreHandlers();
+});
+
+// going to be executed once after running all the tests in this file
+afterAll(() => {
+  server.close();
+});
+
+// jest.mock("", () => {
+//     return () => {
+//         return <div>hi</div>
+//     }
+// })
+
+function renderFunction() {
+  render(
+    <MemoryRouter>
+      <HomeRoute />
+    </MemoryRouter>
+  );
+}
+
+test("renders 2 links for each language", async () => {
+  renderFunction();
+
+  const languages = [
+    "javascript",
+    "typescript",
+    "rust",
+    "go",
+    "python",
+    "java",
+  ];
+
+  // loop over every lang
+  for (let language of languages) {
+    // for every lang, make sure we see 2 links
+    const links = await screen.findAllByRole("link", {
+      name: new RegExp(`${language}_`),
+    });
+    expect(links).toHaveLength(2);
+
+    // assert that the links have the appropriate full_name
+    expect(links[0]).toHaveTextContent(`${language}_one`);
+    expect(links[1]).toHaveTextContent(`${language}_two`);
+    expect(links[0]).toHaveAttribute("href", `/repositories/${language}_one`);
+    expect(links[1]).toHaveAttribute("href", `/repositories/${language}_two`);
+  }
+});
+
+const pause = () => new Promise((res) => setTimeout(res, 100));
+```
+
+now as demo'd above, creating a server, handlers and everything else is a cumbersome ngl
+we've to call beforeAll, afterEach and afterAll and this gets annoying when we have multiple test files that make fake api requests
+
+so the goal here is to refactor all of this logic into a function called createServer() that takes in a config and in that config you could tell it the path, the method, and what kind of response youd like back
+so this way you dont have to rewrite a lot of code and its just easier
+
+this is the fn
+```jsx
+import { setupServer } from "msw/node";
+import { rest } from "msw";
+
+/**
+TO 
+createServer([
+    {
+        path: '',
+        method: '',
+        res: (req, res, ctx) => {
+            return {
+                items: [{}, {}]
+            }
+        }
+    }
+])
+
+FROM
+const handlers = [
+  rest.get("/api/repositories", (req, res, ctx) => {
+    const language = req.url.searchParams.get("q").split("language:")[1];
+
+    return res(
+      ctx.json({
+        items: [
+          { id: 1, full_name: `${language}_one` },
+          { id: 2, full_name: `${language}_two` },
+        ],
+      })
+    );
+  }),
+];
+
+
+ */
+
+export function createServer(handlerConfig) {
+  // map through every ele in this config and create a handler for it
+  const handlers = handlerConfig.map((config) => {
+    return rest[config.method || "get"](config.path, (req, res, ctx) => {
+      return res(ctx.json(config.res(req, res, ctx)));
+    });
+  });
+
+  const server = setupServer(...handlers);
+
+  beforeAll(() => {
+    server.listen();
+  });
+
+  afterEach(() => {
+    server.restoreHandlers();
+  });
+
+  afterAll(() => {
+    server.close();
+  });
+}
+```
+
+### describe
+a describe fn lets us nest tests and it has a few imp results
+1. code organisation
+2. it scopes the beforeAll, afterEach and afterAll and are going to be scoped only to the tests inside the describe block
+
+### fixing and figuring out bugs from libs that you just dont know
+
+#### options for debugging tests
+- use `test.only` or `describe.only` to limit the number of tests executed
+	- running `test.only` will only run that test in a file with multiple tests
+	- running `describe.only` will only run that nest of tests inside the desc block
+- setup a debugger
+	- by simply placing `debugger;` anywhere in the code and running the debug script `"test:debug": "react-scripts --inspect-brk test --runInBand --no-cache"` and then visiting `about:inspect` in the browser will open the debugger tool and pressing the playbutton will help us inspect the values stored in the elements and help us debug the issue
+- console logs
+
+and ive checked another thing i wished to learn, im going to be honest, im still not very confident in my testing skills but onwards and upwards, ill start practising testing with projects i build from here on.
+link to my certificate: [here](https://www.udemy.com/certificate/UC-a847a53b-fa76-4b3d-b359-a267a2bbd650/)
+
+and i'm also interested in checking out this React Advanced course by the Meta Team on coursera, it has some stuff on HOC's which i have no idea on and id also like to get more familiar with some of the other hooks offered by React. useMemo, useReducer and such, ones that i dont use as frequently
+
+i'll update this article if i end up taking up that react course this month!
+
+### tiny notes
+- instead of test() you can also use `it()`
+- and, instead of using `user` from `@testing-library/user-events`, you can use `fireEvent` from `@testing-library/react` and do pretty much the same things.
+	- but, one change from what i know so far, there's no fireEvent.keyboard()
+	- you're supposed to do this: `fireEvent.change(element, {target: { value: "Enter the string to be typed inside the input"}})`
+	- youre basically _changing_ the _target.value_ property of the input, which is what is actually happening.
+	- and this doesnt have to be async
+
+tbh, that coursera advanced react thing wasn't as helpful as i thought it'd be (for me), so here's a list of concepts that i want to learn, and i'll either write articles/ upload videos on yt about the same
+1. hooks
+	1. useState
+	2. useEffect - useLayoutEffect
+	3. useReducer
+	4. useMemo
+	5. useCallback
+	7. useRef
+	8. useContext
+2. react HOC
+3. SWR
+4. react query - as much as i can!
