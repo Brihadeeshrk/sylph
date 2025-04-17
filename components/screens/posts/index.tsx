@@ -48,8 +48,8 @@ export const Layout = ({ post, route }: Props) => {
       </div>
 
       <MDX source={post.content} />
-      <PostNavigation posts={posts} />
       <TableOfContents />
+      <PostNavigation posts={posts} />
     </React.Fragment>
   );
 };

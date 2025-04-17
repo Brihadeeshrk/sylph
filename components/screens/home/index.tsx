@@ -21,12 +21,13 @@ export default function Home() {
       <Spacer />
       <FadeIn.Item>
         <p>
-          Sylph is a Next.js Portfolio Starter that you can use to create your
-          own portfolio website. It is designed to be minimal, lightweight, and
-          fast. It is also highly customizable, so you can easily make it your
-          own. Sylph is perfect for developers, designers, and other creatives
-          who want to showcase their work. To start using Sylph, you can follow
-          the guides below.
+          im a developer from bangalore, india. i'm currently pursuing my post
+          grad in business information technology at rmit, melbourne.
+        </p>
+        <p>
+          im passionate about learning trying and learning new things (mostly
+          within tech), i often write about what i learn, and paste those notes
+          here
         </p>
       </FadeIn.Item>
       <FadeIn.Item>

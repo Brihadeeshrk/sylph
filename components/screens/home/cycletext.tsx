@@ -31,7 +31,7 @@ export function CycleText() {
           transition={{ duration: 0.5, bounce: 0.2 }}
           className="inline-block font-mono text-pink-500"
         >
-          &quot;{words[index]}&quot;
+          {words[index]}
         </motion.h1>
       </AnimatePresence>
     </div>
