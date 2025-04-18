@@ -1,0 +1,2111 @@
+---
+title: "microservices with node, docker and kube"
+time:
+  created: "2024-06-04T19:24:46.167Z"
+  updated: "2025-04-18T09:56:06.854Z"
+author: 
+  name: "briha"
+  link: "https://github.com/Brihadeeshrk"
+  handle: "Brihadeeshrk"
+---
+
+
+# why microservices?
+sure its a flashy term and is a `buzz` word but why do we use it and what benefits do we get?
+- scalability
+	- each service can be scaled independently depending on the demand
+	- which is better resource management as only the components that are needed more are scaled
+- flexibility in tech stack
+	- polyglot programming - diff services can be written in diff langs and diff technologies
+	- easier to integrate new tech and tools in specific services
+- fault isolation
+	- failure in 1 service doesnt bring down the entire network
+	- simpler recovery as only the service that has been affected needs to be brought back up
+- faster ci cd
+	- smaller and more manageable codebases which are easier to develop, deploy and test
+- organisational alignment
+	- decentralised approach
+	- aligns with agile and scrum where each team can take up a service and work fast
+	- clear ownership when it comes to which team does what
+- easier maintenance and updates
+	- since everything is modular, changes can be made independently without affecting other services
+- better security
+	- service level security - security measures can be implemented at the (micro)service level, reducing attacks
+	- isolation of sensitive data - data can be stored in an isolated service making it easier to secure
+	- q- but also this way you only have to attack one service for all the data. then what?
+- optimised for cloud and devops
+	- containerization - suited for containerized en, scaling and deploying on cloud envs
+	- service discovery and load balancing
+- better perf
+	- reduced latency - services can be geographically districuted to be closer to the end user
+	- resource optimisation
+
+    # fundamentals
+## what is a microservice
+a **monolithic** contains all the routing, all the middlewares, all the biz logic and all the db access code req to implement all the features of our application
+
+now, a single **microservice** contains all the routing, all the middleware, all the biz logic and all the db access code to implement **one feature** of our application 
+
+all of the services are self sufficient, so every service has all the code required to make it work perfectly, most likely will have its on DB also
+
+each system/service is standalone and doesnt depend on any other service.
+
+## some big challenges when working with MS
+1. data mgmt between services
+	- how data is stored in a service and how we can communicate with other services
+	- why this is a challenge?
+	- in MS, the way we store and access data is a bit weird
+		- we're usually going to give every service a db, if it doesnt need one, we're not going to give it one
+		- services will never ever reach into another service's db
+		- this property of every service getting its own is a pattern called "database-per-service"
+		- we want every service to run independently of other services
+		- db schema/structure might change unexpectedly
+			- lets just say (for the sake of the arg) that service A is accessing service B's db
+			- service B changed the schema of their db but didnt inform A, now A is expecting a value but receives something else instead.
+		- some services might function more efficiently with diff types of db's (sql v nosql)
+	- so, how then do we communicate between services?
+	- there are 2 comm strategies btw services - **SYNC** and **ASYNC** and NO, the dont have the same meaning as the JS async and sync keywords
+	- SYNC - services communicate with each other using direct requests. it doesnt have to be a HTTP req or anything, it can be in any form but its a DIRECT req
+		- UPSIDES
+			- conceptually easy to understand
+			- this service that is interacting doesnt need a db
+		- DOWNSIDES - gigantic operational downsides
+			- introduces a dependency between this new service and the services whose data is necessary
+			- if any inter service req fails, the overall req fails
+			- the entire req is only as fast as the slowest req
+			- can introduce a web of requests
+	- ASYNC - services communicate with each other using EVENTS
+		- APPROACH 1 (not so great)
+			- going to intro smthn that is accessible from all the services, referred to as an EVENT BUS
+			- the job of the EVENT BUS is handle notifs/ events being emitted from the diff services
+			- these notifs/ events are like obj that describe smthn that has happened or is going to happen inside our app 
+			- all the services are connected to this bus, and every service can either emit or recv events from this bus
+			- so the service that needs data from other services would emit an event to the bus with a type property and some data
+			- and this bus can automatically handle incoming events and route them off to diff services that might be able to handle it. so the bus might forward this event to say, service A
+			- so when A has the result, it would emit another event, and we could configure the bus in a way such that if the type of the event is of a particular type, we could tell it to forward it to the service that needs the data
+			- not the best way as it is basically sync communication but its not even easy to understand conceptually
+		- APPROACH 2
+			- just like db per service pattern, async comm is going to seem bizarre and inefficient
+			- so what we're going to do  is, first rephrase the task this new service is going to do and break up specifically, mark the ips and the ops so you know what is needed
+			- then, create a db with this schema for this service
+			- and now the question arises, how will this new service have the data thats stored in other services?
+			- so along with storing the data in their respective dbs, we also emit an event to the event bus and this event is passed onto this new service, and this service populates its db and then if it has the req data, it returns it to the user
+		- ADVANTAGES
+			- this way, the new service has 0 dependancies on other services
+			- service D will be extremely fast
+		- DISADVANTAGES
+			- data duplication. paying for extra storage + extra db
+			- harder to understand (conceptually)
+
+# mini ms app
+
+## goals of this section
+1. get a taste of MS arch
+2. build as much as possible from scratch
+	1. every service
+	2. event broker
+3. not advised to use this as a starter for duture projs are we'll slowly gravitate to using packages rather than coding everything from scratch
+
+## service breakdown
+- for every unique & diff resource, we're going to create a service. so, in this project (commit "starter code for ms"), we have 2 major services, one to add a post, another to add comments
+- post service
+	- adding and showing all posts
+- comments service
+	- adding and showing all comments
+- now, the post service seems pretty straight forward
+- but every comment is tied to a post, so we have some dependency and thats an issue we have to tackle
+- so we're going to have to use the one of the comm styles we discussed above, and we're going to try and introduce some complexity like, only showing the top 10 comments
+- so when we say top 10 posts, we only want the comments which have been posted these posts right? we dont want to show every comment and every post in the universe
+- now its important to go technical and break down the endpoints, what type of req, body and goal of every service
+
+
+### breakdown of posts service
+- 2 apis
+- POST - `/posts - {title: string}` - goal is to create a post with a unique id and add it to the obj
+- GET - `/posts - {}` - goal is to get all the posts in the posts obj
+
+### breakdown of comments service
+- 2 apis
+- POST - `/posts/:id/comments - {comment: ""}` - goal is to add a comment to to the post with the id mentioned in the req.params
+- GET - `/posts/:id/comments - {} - goal is to get all the comments in the po`st with the id mentioned in the req params
+
+
+
+## note
+for this project, there is a mention of automating testing for the server code just so we save time manually testing through postman, but when it comes to front end stuff, i will be using RTL and performing TDD just to make it a habit from my end to write tests and then code
+
+- now, if you check the code (commit: completed the client app) you'll notice that, we're first making one nw req to fetch all the posts, and then we're making n comments api calls for n posts, as in, if we have 3 posts, were making 3 api calls and this is an imp issue we need to address.
+- how do we minimise the no of req we send?
+- we'll have to use one of the comm styles discussed above, SYNC or ASYNC
+	- SYNC - we send a req to 4000 asking for the posts, this server sends a req to 4001 asking for comments for the post of that id
+	- and then the 4000 server sends the posts with embedded comments
+	- NOT THE BEST SOLN. why?
+		- dependancy btw services
+		- any inter service fails? the whole req fails
+		- introduce a web of reqs
+
+	- ASYNC - we're going to introduce something called a QUERY SERVICE
+	- the goal of this serv is to listen to any event like, post/ comment creation.
+	- this serv will then take all the diff posts, comments and assemble them into a data struct thats going to solve our issue of multiple reqs into just 1 req.
+- implementation: 
+	- now whenever we create a post, we emit a new event of some type and send it to the EVENT BUS, and this EVENT BUS will send it to whichever service is interested in it, which in this case is the query service. 
+	- the query service, will basically process this event and store all this data in its own db
+	- then whenever we create a comment for a post, we emit a new event of some type and send it to the event bus, and this event bus will send it to whichever service is interested in it, which in this case is the query service again.
+	- the query service, will basically store all the comment against this post's record
+	- and now instead of making a GET req to posts, we can make a get req to Query service
+	- so this way, query service has 0 dependence on other services
+	- extremely fast
+	- but, one small issue is data duplication and is a bit harder to understand
+### event bus arch
+- trying to build all of this custom so we understand how it works instead of using an OTS solution (off the shelf)
+- there are many implementations - kafka, rabbitMQ, NATS 
+- what these do is, they recv events (which could be anything! theres no defined struct for an event) and they publish it to all the listeners
+- when choosing an OTS soln, you cant just pick one and go about it. some features are easy to implement, while some are a bitch. so youve got to evaluate the pros and cons of all them and then choose a soln
+- now since we're going with express, we're going to be building only the essential features and we're wont have the vast majority of features that buses usually provide
+- ours is going to be simple, and not really useful outside of this example
+- so for this implementation, we're going to have another endpoint to all 2 of our servers with /events and theyre going to be listening to POST reqs
+- so whenever an event occurs we're going to send a req to this bus and this bus is going to in turn make req to the /events endpoints of all the servers
+
+### moderation
+- so now, lets say we want to add some sort of content moderation where if a comment has a particular word, we hide it on the front end
+- and for that, every comment needs to have another property called `status`
+- whenever someone posts a comment, and they hit refresh it should say 'comment is under moderation'
+- after say 5mins or so, or whatever, if it passed, show the comment
+- or say, this comment is against moderation
+- fairly simple to do in the front end by using js includes()
+- but how to do it in the backend?
+
+#### step 1
+- now we know that we emit events for every action right
+- so we need to create a moderation service
+- so the desired flow is
+	- comment service emits event
+	- moderation service emits an event with the moderated status
+	- query service picks up this status and adds it to the db
+- lets say the mod service is the only service that cares about the commentCreated event
+- now the mod service will validate the comment and check if everything is ok, if it is or if its not, the appropriate status will be applied and another event will be emitted, CommentModerated
+- and this event will be picked up by the Query service which will add it to the db
+- what are the pros and cons?
+	- lets just say we hand this comment to a person and ask them to review it
+	- if it took days, then there is some significant delay in the process
+	- now lets think of this flow
+		- you post a comment (backend: event is emitted to the bus and mod service)
+		- you refresh the page and see nothing or atleast say smth like your comment is under moderation or something
+		- so even if they refresh its not going to happen instantly because moderation will take some time
+	- so the downside is that the user cant see what they submitted instantly, even if just says under mod etc..
+
+#### step 2
+- its the logic you were thinking of all along
+- when the comment is being stored, give it a default value of status: 'pending'
+- so when the mod service eventually does approve it changes the document in the query table and the ui is changed
+- what are some issues in step 1 and step 2
+	- now the question being asked is, is the query service responsible for the updation of this status etc?
+	- you may say its a single line fn that changes the status
+	- now lets say tomo we add other services like lieks, dislikes etc.. so then the query service is supposed to have the logic for all of that?
+	- the logic behind the query service is to being a service that quickly dispatches data to the user
+	- and we really shouldnt add all this processing logic to this service
+
+#### step 3
+- now do we have any service whose primary function is to work with comments? yes the comment service
+- so what we do is, by default when you create a comment, append it with a status- pending
+- hen, emit a event to the bus
+- the event is picked up by the mod and the query service
+	- the query service takes it in and stores
+	- mod service does its job
+- then after the mod service is done, it emits another event CommentModerated which is handled by the Comment Service
+- the comment service does the necessary updates and emits another event called CommentUpdated
+- this event is handled by Query which simply replaces or does whatever is needed to copy the data from the event and store it in its db to serve to the user
+- this is the process we'll end up using
+
+
+### dealing with missing events
+- what if one service suddenly goes off in the middle and some posts are still in moderation?
+- what if we create the QUERY service JUST NOW but we have years' worth of comments and posts, then what? 
+- its imp to note that prod grade event buses have a much more robust implementation for storing events but we're only doing all this to understand the need and what sooort of happens bts
+- how would we approach this scenario?
+	- SYNC
+		- send a req to comments and posts and get all their data through api calls
+		- and for this, wed have to make some changes to the server and write endpoints to send data in bulk
+	- DB ACCESS
+		- instead of writing endpoints in server and post
+		- just make it such that QUERY accesses the dbs of post and comments no?
+		- but what if post is sql and comments is nosql? then you have to write code for 2 diff dbs and its a huge pain in the ass
+	- INTERNAL STORE
+		- just as i thought, we're going to have an internal data struct inside the event bus that keeps track of all the events
+		- and this is my assumption of how its going to work, if any service is down, we'd get an axios error right? so in the catch block of this api call, we add this event to the array? or queue
+		- and when some req does go through, we check if there are eles in this queue, and then send them all off
+
+		- CORRECTION: 
+			- we keep track of ALL events
+			- so lets say a service is down, and it receives an event
+			- as soon as it comes online it can send an event asking for an update and tell it the events it last received, if there are any new events, the bus would send it over
+
+#### implementation
+```js [event-bus.js]
+const events = [];
+
+app.post("/events", (req, res) => {
+  const event = req.body;
+
+  events.push(event);
+
+  axios.post("http://localhost:4000/events", event).catch((err) => {
+    console.log(err.message);
+  });
+  axios.post("http://localhost:4001/events", event).catch((err) => {
+    console.log(err.message);
+  });
+  axios.post("http://localhost:4002/events", event).catch((err) => {
+    console.log(err.message);
+  });
+  axios.post("http://localhost:4003/events", event).catch((err) => {
+    console.log(err.message);
+  });
+  res.send({ status: "OK" });
+});
+
+app.get("/events", (req, res) => {
+  res.send(events);
+});
+```
+
+goal is to make an api req as soon as the server starts listening
+```js [query.js]
+app.listen(4002, async () => {
+  console.log("Query listening on 4002");
+
+  try {
+    const res = await axios.get("http://localhost:4005/events");
+    for (let event of res.data) {
+      console.log("processing event: ", event.type);
+      handleEvents(event.type, event.data);
+    }
+  } catch (error) {
+    console.log("error while fetching prev events", error);
+  }
+});
+```
+
+
+# running services using docker
+
+
+## current deployment scenario
+- we have servers running on 4000, 4001, 4002, 4003 and 4005
+- now a simple solution is to take all this code and place it in a VM and run it there
+- lets say comments service is being called too much, so we could create 2 more instances of comments and use a load balancer (load balancer basically randomises which comments server to send it to)
+- and then wed have to use 2 more extra ports for these 2 new comments services
+- and because we added these 2 new ports, we have to make changes in multiple projects, such as event bus and more
+- and this way we're tightly coupling our code to the number of instances of comments
+- and if you say we're going to have a separate VM for extra comments, we're still going to have to change multiple files and make changes
+- hence we're going to be introd to docker and kube 
+
+
+## why docker
+- we're going to create containers
+- containers are like isolated computing envs
+- it contains everything we need to run a single program
+- so we're going to create separate containers for separate services
+- if we need extra instances, we can just create another container with comments
+- what do we need to run our services? npm and node right?
+- now, if we need to run it somewhere we're assuming node and npm are installed no? and thats a big assumption
+- and also it requires knowledge on which script to use to run the services
+- so docker solves both these problems, its going to contain everything we need to run the service and will also know how to start it etc
+- super easy when it comes to running services, not just for node js but for anything
+
+## why kube
+- tool for running a bunch of containers together
+- when we run kube, we're supposed to give it a config file which tells it which all containers we'd like to run
+- and then kube is going to handle comm and nw reqs btw all these containers
+- so kube creates this thing called a cluster
+- a cluster is a set of diff VMs, each VM is referred to as a node
+- theyre all managed by something called a master and this master is a program thats going to manage everything inside of our cluster, all the programs and other aspects
+- so lets say we have 3 nodes
+	- 2 post
+	- and 1 event bus
+	- now when an event occurs, we'd have to tell the event bus how to reach the 2 post containers
+	- when in fact, kube offers this "channel" , that lets us pass things to it and this channel will forward it to posts
+	- so this way communication is super simple
+- kube also makes copying containers and scaling super easy
+
+## docker
+- why should we use docker?
+	- at some point we mustve installed some sw on our laptop
+	- during the installation wizard, we may come across some error, we may have looked up the error and fixed that issue
+	- and when the wizard continues, we may come across another error and then its the troubleshooting phase all over again
+	- so, docker wants to make it super easy & straight forward to install and run sw on ANY device, laptop, servers etc
+	- docker makes it really easy to install and run sw without worrying about setup or dependencies
+- what is docker?
+	- a bit more challenging to answer
+	- when you read an article, or talk to someone, when they say "Oh i use docker", they most probably mean that they use the Docker ecosystem, and that Ecosystem consists of Docker Client, Server, Machine, Images, Hub, Compose
+	- All these tools are pieces of sw that come together to form a platform to create containers
+	- In essence, docker is a platform or ecosystem around creating and running containers
+	- so to run redis, we ran `docker run -it redis` so when we ran this, something called docker cli reached out to docker hub and it downloaded a single file called an `Image`
+	- an `Image` is a single file that contains all the dependencies and all the config req to run a ver specific program, for eg redis
+	- a container is an essence of an image
+	- a container is a program with its own isolated set of hw resources, its own memory, its own nw tech, its own hard drive
+- installing docker
+	- when we install docker, we're installing 2 key pieces of sw
+	- called docker client (cli) and docker server (daemon)
+	- cli - the tool that were issuing commands to
+	- daemon - the tools thats responsible for creating images, running containers etc
+- docker bts
+	- we installed docker and ran `docker run hello-world`
+	- here's all the things that happened bts
+		- you gave the command to the cli
+		- cli relayed this to the daemon
+		- daemon checked if this image is available locally by looking into the `image cache`
+		- since we just installed docker, we obv didnt have it, so the daemon reached out to docker hub, which is a repo of free images that we can download and run
+		- so the daemon downloaded it from the hub and saved it locally in the image cache, where it can obtained from next time
+		- then the daemon took that image, loaded it into the memory and created a container and ran it
+- what is a container?
+	- but before that,
+		- what is NAMESPACING?
+			- it is basically isolating your hard drive or any "resource" for that matter for processes or a group of processes
+		- what are control groups? (cgroups)
+			- they limit the amount of resources used per process
+			- amount of memory, cpu, hard drive, and nw bandwidth
+	- so in other words, a container is basically just a process and its necessary req resources
+	- so the process talks to the kernel which in return talks to the resources that have been available for this process
+	- what is the image -> container relation?
+		- whenever we talk about images? we're talking specifically about file system (FS) snapshots and a start up command
+		- what is a fs snapshot? its a copy-paste of some directories from the FS
+		- so what happens when we run this image?
+			- the kernel is going to allocate some part of the hard drive for the fs snapshot inside the image and store the snapshot data there
+			- and then the startup command is run, and then the process is started and is isolated to just that container
+- how is docker running on your device?
+	- namespacing and cgroups are specific to linux
+	- when we installed docker, we basically installed and are running a linux VM
+	- inside this VM, we're creating all these containers
+	- and the VM talks to the kernel and allocates resources etc
+
+### creating and running an image
+- `docker run <imagename>`
+- we can also override the start up command by doing this
+	- `docker run <imagename> command!`
+	- after the imagename, we supply an alt command to be executed inside the container after it starts up
+	- this is an override and the command that was there alongside the fs snapshot will not be run anymore
+	- `docker run busybox echo hi there`
+		- what does this mean?
+		- we installed an image called busybox which contains .exe files called echo, ls, etc
+		- and who knows what the startup command for busybox is? and we dont need to know it too as long as we know what command to run
+		- so in this example, the busybox image has an exe called echo which repeats whatever you say to the docker cli
+		- so when we run this command, we see hi there
+	- `docker run busybox ls`
+		- same understanding as above
+		- busybox has an ls exe
+		- so when we run it, we see the files that were copied to the container's hard drive by the fs snapshot
+		- so whatever files you see, are all files that were copied from the fs snapshot and ARE NOT YOUR LOCAL FILES
+
+
+
+## listing running containers
+- `docker ps`
+- this command will list all the diff running containers that are currently on our machine
+- `docker ps --all`
+- this command shows all the commands that have been called by you
+
+## container lifecycle
+- running `docker run` is equivalent to running `docker create` + `docker start`
+- `docker create <image-name>` - creates a container
+- `docker start <image-name>` - starts a container
+- what happens when we create a container?
+	- the fs snapshot from the image is taken and setup in the container's hardware
+- what happens when we start a container?
+	- we run the startup command that comes with the image
+- now lets create and start a container
+```bash
+
+docker create hello-world
+> 4bf79a0bcd1a0703cf0d67c51bd31d58d375ca411c478782bf69e6962347a768
+
+docker start -a 4bf79a0bcd1a0703cf0d67c51bd31d58d375ca411c478782bf69e6962347a768
+> output
+
+%% what happens if we dont give the -a %%
+docker start 4bf79a0bcd1a0703cf0d67c51bd31d58d375ca411c478782bf69e6962347a768
+> 4bf79a0bcd1a0703cf0d67c51bd31d58d375ca411c478782bf69e6962347a768
+
+%% the -a attribute tells docker to watch for the output %%
+```
+
+## utils
+### to clear your docker containers
+- you can clear your stopped containers, build cache etc by running this command
+```bash
+docker system prune
+```
+
+- so now, if you want to run any image, it would first download the image from docker hub and then run it for us
+
+### to get output logs
+- now there maybe times when we forget to add the `-a` flag while using `docker start`
+- and if it takes minutes/ hours to run, having to re run it again with the -a flag is just painful
+- which is why we can use logging, such that whatever event is emitted from this container, its logged
+```bash
+docker start 4bf79a0bcd1a0703cf0d67c51bd31d58d375ca411c478782bf69e6962347a768
+> 4bf79a0bcd1a0703cf0d67c51bd31d58d375ca411c478782bf69e6962347a768
+
+docker log 4bf79a0bcd1a0703cf0d67c51bd31d58d375ca411c478782bf69e6962347a768
+> 4bf79a0bcd1a0703cf0d67c51bd31d58d375ca411c478782bf69e6962347a768
+> hi there
+
+```
+
+
+### how to stop containers
+- when we used to run docker run, we could stop the execution using cmd+c
+- but if we use docker start and docker logs, how do we stop containers?
+- `docker stop container-id` or `docker kill container-id`
+- stop
+	- when we use the stop command, bts, docker sends a signal to the container called SIGTERM
+	- aka terminate signal
+	- what this does is, it tells the container to terminate the signal in its own time and also gives the container a little time to perform some clean ups
+	- if the container doesnt stop within 10s, docker automatically issues the kill command
+- kill
+	- when we use the kill command, bts, we send the SIGKILL command
+	- aka kill signal
+	- terminate and dont do anything else
+- ideally wed like to stop containers
+
+
+### execute an additional command in a container
+- when using redis
+- we usually run 2 commands, `redis-server` and `redis-cli`
+- but if we run redis in a container, we cant access this redis server from outside (obvi)
+- so then, in essence, we need to have another startup command along with the one that comes already with the image
+- but how do we call it?
+`docker exec -it container-id command`
+- exec - run another command
+  -it - allwos us to provide input to the container
+  command - the extra command you want to run
+- an example:
+
+```bash
+%% shell 1 %%
+docker run redis
+
+%% shell 2 %%
+docker ps
+> CONTAINER ID   IMAGE     COMMAND                  CREATED         STATUS         PORTS      NAMES
+> d29c63477078   redis     "docker-entrypoint.s…"   5 seconds ago   Up 4 seconds   6379/tcp   trusting_poitras
+
+docker exec -it d29c63477078 redis-cli
+> 127.0.0.1:6379:> set mynumber 5
+> 127.0.0.1:6379:> get mynumber
+> "5"
+```
+
+
+- what happens if we dont give -it?
+	- redis cli will be started but we wont have the ability to provide any inputs to this
+
+
+#### purpose of -it flag
+- in reality, the -it flag is a combination of a `-i` and a `-t` flag
+- processes in linux have 3 channels lets say, STDIN, STDOUT and STDERR
+- whatever ip you give, goes into the container using the STDIN channel, whatever the container spits out is shown to you via the STDOUT channel, and if any errors occur, theyre shown to you via the STDERR channel
+- so when we type `-i` we're saying we want to attach this terminal session to the STDIN channel of the newly running process
+- the `-t` flag simply formats it nicely for us to use, it does quite a bit under the hood, but simply for us to understand, it just makes the ips and ops pretty
+- also provides autocomplete etc..
+
+### how to get access to the terminal of your container?
+- we will want to run commands inside our container without constantly wanting to type exec exec etc
+- so if we want to access the terminal of a container, we can run this 
+
+```bash
+docker exec -it container-id sh
+> #
+```
+- and now we can run any linux or terminal commands like cd, ls, export etc
+- and once youre in your shell and if you cant exit using ctrl+c, you can try ctrl+d
+
+#### starting with a shell
+- we can also run the `docker run -it busybox sh` command to start the busybox container, but just open the shell
+- this way, we can poke around ourselves and execute whatever command we want
+
+
+## creating docker images
+- till now we've used images created by other devs, redis-cli, busybox, hello-world
+- the process to create our own image is relatively straight forward, we just have to remember the syntax
+1. create a dockerfile
+	- this is a plain txt file with a few lines of config to define how our container must behave, what prgms it must contain and what it should do when it starts up
+2. send it to docker client
+3. client will send it to docker server
+	- server is doing all the heavy lifting for us
+	- its going to look inside the dockerfile and create an image that we can use
+4. we have a usable image
+- what is the flow to create a docker file?
+	- specify a base image ➡️ run some commands to install additional prgms ➡️ specify a command to run on container setup
+- here is a simple Dockerfile
+
+```Dockerfile
+# using the flow established earlier
+# use an existing docker image as a base
+FROM alpine
+
+# download and install a dependency
+RUN apk add --update redis
+
+# tell the image what to do when it starts as a container
+CMD ["redis-server"]
+```
+
+- then we cd into the file where we have this Dockerfile
+- and we simply run `docker build .`
+- and then in the end, we'll get one id of the image we created, then we can simply do `docker run image-id`
+
+### breaking down the Dockerfile
+- the Dockerfile contains a particular syntax
+- the first word is an 'instruction'
+- and whatever comes after it is an 'argument'
+- so the instruction tells docker-server what to do
+- the 'FROM' is used to specify what image we want to use as a base
+- the 'RUN' instruction is used to execute some command while we are preparing our custom image
+- the 'CMD' instruction is used to specify what should be executed when our image is used to start up a container
+- FROM RUN and CMD are some of THE MOST IMP instructions, but there are many more that need to be known
+- if you dont want certain files to be included, then you can have a `.dockerignore` file and in there we can list all the files that we DONT want to copy
+
+
+
+#### what is a base image?
+- writing a Dockerfile is similar to installing some browser on a comp with no OS
+- what are the steps we'd do?
+	- install an os ➡️ open default browser ➡️ download chrome dmg ➡️ run dmg right?
+- so what we did with `FROM alpine` was very similar
+- that was like saying, install this OS (not exactly but just to paint a picture of what its like)
+- otherwise it would be an empty image, no infra, no programs that we could use, nothing to help us install extra dependencies, nothing
+- so having a base image is to give us a starting point of sorts that we can customise etc
+- what is alpine?
+	- simple, it contained the necessary programs and functions that we needed to create our custom image
+	- very much like asking, why you chose win/ mac as your preferred os- because they provided you with what YOU needed
+
+
+### breaking down the build process
+- so first things first, we check if our build cache if we've installed an image for alpine
+- if we haven't, we install that from docker server and create an image with it
+- now this image contains 2 parts right? its FS snapshot and some startup running command
+- - - The End of Step 1 - -
+- Then we come across the RUN instruction which asks the server to install redis right, so what happens here?
+- we create a temporary container with that image, using the command we gave as an argument to that instruction as the startup command
+- now our FS contains all the files from alpine and also the files for redis server right?
+- a copy of the fs is taken and this container is terminated
+- - - The End of Step 2 - -
+- the 3rd line, is an instruction telling what command we'd like to have as our startup command right?
+- so we again spin up a temporary image, and copy the fs snapshot from the previous step and replace the startup command with what is specified in the Dockerfile
+- and this final image is the image that we return to the user
+- - - The End of Step 3 - -
+
+
+### rebuilds with cache
+- if we re run the build command for this Dockerfile, we can see that it simply says `CACHED [2/2] RUN apk add --update redis `
+- in other words, it caches every line of operation of our dockerfile
+- lets say we add another line after `RUN apk add --update redis` that says `RUN apk add --update gcc`
+- now that our Dockerfile has changed, we dont run every line, the docker server sees which line has changed, and then it only executes the lines that have changed and the lines below that
+- and it uses cache to build the lines before it, because they havent changed since the last build
+- now, lets say we invert the redis and the gcc line
+- now, the server would have to reinstall gcc and redis because now the order has changed and now redis being installed AFTER the changed gcc line
+- so, when modifying dockerfiles, its important to make sure we add new liens towards the bottom to maximise cache usage
+
+
+### tagging an image
+- now at the end of the build process, to run the image we just created we have to run attach the long string (smthn like `sha256:950fc54d9b019d2b2e06fae0e3192f65353a081504811372f41e0a989aab71b0`) at the end of docker run right?
+- now copying this long string is not difficult, but it would be easier if we could 'tag' it, or in other words give it an alias right?
+- for that, we need to modify the build command slightly
+`docker build -t your-docker-id/imagae-name:version .`
+- your docker id is what you setup as your username
+- you can choose whatever name youd like to set for the image, maybe redis-server or just redis
+- and then the version is usually a number, but you could also just put `:latest`
+- so your build command should look like this in case you decide to tag your image
+```bash
+docker build -t briha2101/redis-server:latest .
+> ...
+> ...
+> ...
+> Tagged as ...
+
+docker run briha2101/redis-server
+```
+
+- so now, when i want to run this image, i can use the tag i just gave
+- i can optionally emit the version, because by default the latest version would be selected for container creation
+- but technically speaking, the version we specify at the end is the tag, everything else is more like the repo or the project name
+
+### manual image creation using docker commits
+- very rare that we would actually do this
+- ok, but how would we do this?
+```bash
+docker run -it alpine sh
+> #> apk add --update redis-server
+> ...
+> ...
+> ...
+```
+
+- in another terminal shell,
+- for this we use the `commit` property along with the `-c` flag and within single quotes, we mention the command we want to set as the initial command and then we follow it with the id of the container
+```bash
+docker ps
+> CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES
+> efeee12       alpine      "sh"       ...       ...       ...       ...
+
+docker commit -c 'CMD ["redis-server"]' efeee12
+> sha256:2473rshfsgsh
+
+
+docker run 2473rshfsgsh
+> ...
+> ...
+> redis-server initialised
+```
+
+### run a nodejs server inside the container and access it from outside
+- what does alpine mean?
+- in the docker ecosystem, alpine basically means only the most basic version
+- so node:alpine would mean, only the most essential and stripped down image of node
+- flow
+	 - create a nodejs webapp
+```jsx
+const express = require("express");
+	
+const app = express();
+	
+app.get("/", (req, res, next) => {
+	res.send("Hello World!");
+});
+	
+app.listen(8080, () => {
+	console.log("Listening on port 8080 🚀");
+});
+```
+	- create a dockerfile
+```Dockerfile
+	# specify a base image
+	# downloadinfg and running an image that has node preinstalled
+FROM node:14-alpine
+
+# copy the contents of the current work-dir and paste it into the container
+COPY ./ ./
+# download and install the dependancies
+RUN npm install
+
+# default command
+CMD ["npm", "start"]
+```
+	- build image using dockerfile
+		- `docker build -t briha2101/simpleweb .`
+		- if we dont add `:latest` also its ok, its appended by def
+	- run image as a container
+		- `docker run briha2101/simpleweb`
+	- connect to webapp from a browser
+		- port forwarding
+			- when we start the image, the server is running on 8080
+			- but if access that on our machine, we cant bevause the container is an isolated env and the traffic isnt routed to the container's ports
+			- the container has its isolated set of ports, through which it can receive traffic but by default traffic from our local machine wont be sent into it
+			- if we want traffic from local nw to be sent to our container, we need to setup an *explicit port mapping*
+			- **port mapping** is essentially saying, if anyone makes a req to port 8080 on your local machine, forward that to one of the container's ports
+			- now, our container has no limitation on sending data out, as we've noticed with npm install. the only problem is data in ->
+			- how do we enable this? its not something to change inside the Dockerfile, but something we add while running the image
+			- the syntax: `docker run -p 8080:8080 briha2101/simpleweb`
+			- the `-p` flag is for port mapping
+			- then we mention the port on localhost that we'd like to fwd to the container
+			- then we mention the port inside the container
+			- and then the id of the image
+
+```bash
+docker run -p 8080:8080 briha2101/simpleweb
+```
+- note, for forwarding the local nw port and the container dont have to be the same (which is what we'll be doing in prod projects)
+
+### setting up a working dir
+- now in the dockerfile when i copied everything from the folder into the container, it placed everything in the root folder
+- and this can sometimes cause conflicts when we have folders with the same names, and these folders override existing folders and disrupt services in our container
+- which is why we can setup a working directory and mention where in the container we want to store all our files
+
+```bash
+WORKDIR /usr/app
+COPY ./ ./
+
+RUN npm install
+```
+- this states that, well be setting the files' location to usr/app
+- and then copy the files there
+- and then the rest of the processes
+- if this folder doesnt exist, it will be created for us
+### dealing with changes and rebuilds
+- lets make a change in the `index.js` file and see if it reflects on the browser
+- OBV NOT, because we havent copied the latest version of the code to the container
+- so, how would we do this? we have to build the container again
+- so when we do it, docker notices that the files have changed, so it re runs the COPY instruction and all the commands under it
+- and that means `npm install` also, and re running npm i when we dont have any new dependancies is troubling when we have many dependancies in our project. so how do we fix this?
+- so the goal is to minimise npm i runs right? what does npm i need? a package.json file. so kets just copy that ONE file first
+
+```bash
+COPY ./package.json ./
+
+RUN npm install
+```
+- this way, npm i will only run if theres a change in the package.json file, which is exactly what we want
+
+```bash
+COPY ./package.json ./
+RUN npm install
+COPY ./ ./
+```
+- and then we can simply do this, where we copy all the remaining files later
+- so now, even if we make some changes, we arent running npm i, itll simply use build cache, well only copy the files and the run command
+#### notes
+- Buildkit will hide away much of its progress which is something the legacy builder did not do. We will be discussing some messages and errors later in Section 4 that will be hidden by default. To see this output, you will want to pass the progress flag to the build command: `docker build --progress=plain .`
+- Additionally, you can pass the no-cache flag to disable any caching: `docker build --no-cache --progress=plain .`
+
+
+## commands overview
+- some commands are
+```bash
+docker build -t userid/tag # building an image and tagging
+docker run [image_id/tag] # running an imahe
+docker run -it [image_id] [cmd] # create and start a container, but override the startup command
+docker ps # show all running processes
+docker exec -it [container_id] [cmd] # execute the given command in a RUNNING container
+docker logs [container_id] # print the logs from the given container
+```
+
+- now we take all of this learning and create images of all the services we created in the blog project
+
+# collections of services using kube
+## installing kube
+- kube is a tool for running a bunch of different containers
+- we give it some config to describe how we want our containers to run and interact with each other
+- we can install it through docker desktop
+- docker desktop ➡️ settings ➡️ enable kube
+- and if you want to check the installation, you can run this command
+```bash
+kubectl version
+```
+
+## tour of kube
+- whenever we want to use kube, we need to have all the images ready to go
+- so when the images are ready, we're going to want to create a container out of it, and deploy it to a kubernetes cluster
+- a **'NODE'** is a virtual machine
+- its a computer thats going to run some containers for us
+- if we're running kube on our local machine, well most probably have just 1 node
+- only when we start deploying it to some cloud provider do we have access to multiple nodes
+- but the process is the same for 1 or even a 1000 nodes
+- so when we want to run these containers, we first create a **config** file
+- in this config file, we tell it EXPLICIT instructions on what we need done and also setup some networking on it so that we can interact with it etc
+- and we're going to send it to the "MASTER" of the kube engine, using cli using the `kubectl` command
+- once we deploy this config file, the kube engine is going to search for this image, itll first search our docker daemon and see if we have it, if we dont itll search the hub
+- and then as per our instructions, ill create as many containers as weve mentioned and will distribute it equally among nodes (but there is some science behind how it distributes it equally)
+- each container is going to be hosted and created inside something called a **POD**
+- **NOTE**: **POD** and **CONTAINER** are NOT the same thing, but for the context and content of this lecture we can use them interchangeably
+- a pod technically wraps up a container and a pod can have multiple containers inside it
+- to manage these pods, kube is also going to create something called a DEPLOYMENT
+- this deployment is going to read the config file and make sure that we ALWAYS have the right no: of pods running at any given instance
+- now we did mention that we want to allow networking features, so this is where things get a bit tricky
+- Kube is going to create something called a service
+- services give us access to running pods
+- its takes the difficulty away and handles networking among microservices
+- now lets take for example: the event bus is running in a pod, now in order to emit events, we need to know the URL of the posts service etc no?
+- in a MS env, when dealing with pods, and containers and all its difficult to obtain or definitively tell what the URL would be
+- which is why we use the service
+- since the service has access to all the pods, we can simply route this to the service, and the service would handle it and route it to the appropriate pod
+- and this service has a relatively easy URL to remember, not like localhost:4000 or something, its much easier
+## kube terminology
+- node - a vm that will run our containers
+- cluster - a collection of nodes and a master to manage them
+- pod - something that will wrap our containers, or we can run multiple containers in a pod
+- deployment - monitors a set of pods and makes sure theyre running and restarts them if they crash
+- service - provides an easy to remember URL to access a running container
+## config files
+- tells kube about the diff deployments, pods and services (these 3 are collectively referred to as objects) that we want to create
+- written in yaml syntax
+- always store these files with the proj src code- they are documentation
+- we can create objs without config files but DONT DO THIS
+- config files provide a precise defn of what your cluster is running
+- kube docs will tell you to run direct commands to create commands - ONLY DO THIS FOR TESTING
+- this is a simple `.yaml` file that is trying to create an container of the posts service inside a pod
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: posts
+spec:
+  containers:
+    - name: posts
+      image: briha2101/posts-service:0.0.1
+
+```
+- note: the indentation has to be perfect, otherwise itll throw an error
+- and to create this pod, we run the command `kubectl apply -f posts.yaml`
+- and to check our running pods, we can simply do `kubectl get pods`
+- to delete a pod, we can simply do `kubectl delete -f posts.yaml`
+
+### config file breakdown
+- `apiVersion: v1` - k8s is extensible- we can add in our won custom objs. this specifies the set of objs we want k8s to look at
+- `kind: Pod` - type of obj we want to create
+- `metadata` - config options for the obj we are about to create
+	- `name` - when the pod is created, give it a name of `posts`
+- `spec` - the exact attributes we want to apply to the obj we're about to create
+	- `containers` - we can create many containers in a single pod. this property is an array. which is why all the containers we'd like to create are prefixed with a `-` before the name, signifying an element in the arr
+		- `name` - make a container with the name of `posts`
+		- `image` - the exact image we want to use. you may have notieced we added a tag for the version at the end of the image name, and wkt if we dont specify the tag, by def we take the latest.
+		- problem is, if we don't specify a tag, k8 assumes that we're talking about `latest` and will try to pull the image from dockerhub
+		- which is why we add a version and tell k8 to use the image in our local machine (this is only an issue for this lecture)
+
+
+## common pod commands
+- here are some commands that were familiar with in docker and here are their equivalents wrt k8s
+- docker ps ➡️ kubectl get pods
+- docker exec -it `[containerid]` `[cmd]` ➡️ kubectl exec -it `[podname]` `[cmd]`
+- docker logs `[containerid]` ➡️ kubectl logs `[podname]`
+- docker is about running individual containers ➡️ kube is about running a group of containers
+- some common commands:
+1. kubectl get pods - print info about all the running pods
+2. kubectl exec -it podname cmd - exec the given cmd in a running pod
+3. kubectl logs podname - print out logs from the given pod
+4. kubectl delete pod podname - deletes the given pod
+5. kubectl apply -f config-file-name.yaml - tells kube to process the config
+6. kubectl describe pod podname - print out info about the running pod
+
+
+| command                                | description                               |
+| -------------------------------------- | ----------------------------------------- |
+| kubectl get pods                       | print info about all the running pods<br /> |
+| kubectl exec -it podname cmd           | exec the given cmd in a running pod<br />   |
+| kubectl logs podname                   | print out logs from the given pod<br />     |
+| kubectl delete pod podname             | deletes the given pod<br />                 |
+| kubectl apply -f config-file-name.yaml | tells kube to process the config<br />      |
+| kubectl describe pod podname           | print out info about the running pod<br />  |
+
+
+
+## kube deployments
+- usually we dont create pods in this manner we mentioned above (config file)
+- what im trying to say is, the code in the config file explicitly creates 1 pod, but in reality, wed be creating deployments, and these deployments in return create pods and manage them
+- they serve a 2fold purpose: as established already they manage the pods and make sure to restart or create new pods in case old ones crash and/or stop. and they also allow us to seamlessly update the code that our pods run. we can build the file and the deployment would create the new pods, wait for them to run and be ready and would then manage the new ones
+- and would delete the old ones one by one
+- this is how we'd write a config for a deployment
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: posts-depl
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: posts
+  template:
+    metadata:
+      labels:
+        app: posts
+    spec:
+      containers:
+        - name: posts
+          image: briha2101/posts-service:0.0.1
+```
+
+### explanation
+- **apiVersion: apps/v1**
+	- This specifies the API version of Kubernetes were using. 
+	- we used v1 for pods and we have to use apps/v1 for deployments.
+- **kind: Deployment**
+	- This defines the type of kube object were creating. 
+- **metadata:**
+	- This section contains metadata about the deployment.
+- **spec:**
+	- This section describes the desired state of the deployment.
+	- **replicas: 1**
+		- This specifies the number of pod replicas (copies) we want. 
+	- **selector:**
+		- kube finds it difficult to know which pods are to managed by the deployment
+		- which is why we define a selector that tells us how to find the pods managed by the deployment.
+		- **matchLabels:**
+			- This is used to match the labels of the pods.
+			- **app: posts**: This label is used to identify the pods that belong to this deployment.
+			- in reality, we could give anything: '324784783': 'scsjchd' and it would still be okay, this 'id' in a way is how we identify pods that are to be managed
+	- **template:**
+		- This describes the pods that will be created by the deployment.
+		- **metadata:**
+			- This contains metadata about the pods.
+			- **labels:** This labels the pods with app: posts.
+	- **spec:**
+		- This specifies the pod configuration.
+		- **containers:**
+			- **name: posts**
+			- **image: briha2101/posts-service:0.0.1**
+
+
+## common deployment commands
+
+| command                                    | desc                                                     |
+| ------------------------------------------ | -------------------------------------------------------- |
+| kubectl get deployments                    | list all the running deployments                         |
+| kubectl describe deployment deploymentName | print out info about a specific deployment               |
+| kubectl apply -f config-file.yaml          | create a deployment out of a config file (same for pods) |
+| kubectl delete deployment deploymentName   | delete a deployment                                      |
+
+#### k get deployments
+
+```bash
+NAME         READY   UP-TO-DATE   AVAILABLE   AGE
+posts-depl   1/1     1            1           13m
+```
+- READY: 1 pod is ready to receive traffic out of 1 pods that were meant to be created
+- UP TO DATE: as we mentioned earlier, we can use depls to update the code running in pods, so this shows the no: of pods running upto date code
+- AVAILABLE: no: of pods that are available and ready to do some work
+
+
+
+## updating deployments
+- there are 2 methods we can do this
+- approach #1
+	- make a change to the proj code
+	- rebuild the image, specify a new version
+	- in the deployment config, update the image version
+	- run the command `k apply -f file-depl.yaml`
+	- not used in professional working envs
+	- now, you may be thinking that running this depl again would create a new deployment. no, kube would know that this deployment exists, and it would simply update the code inside the deployments with the new image's code
+	- but why dont we use this approach?
+		- we have to manually change the image's version in the config file.
+		- and once our deployment files get bigger and bigger, its really difficult to find and make changes and its super easy to mess it up and cause an error
+		- but it would be amazing if we didnt have to specify a version at all no? and we could just say use the latest version or something like that
+- approach #2
+	- the deployment must be using the latest tag in the pod spec version
+	- update the code
+	- build the image `docker build -t briha2101/name-service .`
+	- push the img to docker hub using `docker push image-tag`
+	- run the command `k rollout restart deployment deployment-name`
+	- this is preferred as there is no change to the config yaml
+
+## kube services
+- now that we have a pod running, how do make a request to that pod?
+- a service is another type of obj in kube
+- services provide networking between pods
+- created using config files
+- were going to use services to setup comm btw our pods and/ or to get access to our pods from outside
+- whenever we think of networking, we are thinking of services
+- there are several types of services
+
+| servicename   | desc                                                                                                        |
+| ------------- | ----------------------------------------------------------------------------------------------------------- |
+| cluster ip    | sets up an easy to remember url to access a pod. only exposes pods in the cluster                           |
+| node port     | makes a pod accessible from outside the cluster. usually only used in dev and not used anywhere else really |
+| load balancer | makes a pod accessible from outside the cluster. this is the right way to expose a pod to the outside world |
+| external name | redirect an in cluster request to a CNAME url                                                               |
+- but we only use cluster ip and load balancer on a daily basis
+
+
+## port forwarding
+- run `k get pods`
+- get the id of name of the pod
+- then run `k port-forward {pod-name} 4222:4222`
+- the first port, is the port on the local machine i want to access this server on, and the 2nd port is the port that im trying to access in the pod
+## creating a node port service
+- why are we creating a node port when we just established that we dont use it that much?
+- easy- we dont have any other pods for cluster-ip and setting up a load balancer requires a LOT of setup
+```yaml [posts-srv.yaml]
+apiVersion: v1
+kind: Service
+metadata:
+  name: posts-srv
+spec:
+  type: NodePort
+  selector:
+    app: posts
+  ports:
+    - name: posts
+      protocol: TCP
+      port: 4000
+      targetPort: 4000
+```
+
+- and then you can create this service using `k apply -f posts-srv.yaml`
+### explanation
+- kind- Service (pretty self explanatory)
+- spec
+	- type: here we specify the type of service we want to create
+	- selector: to which pods do we want to provide networking to? if you remember our deployment yaml file we wrote a similar line in spec/selector `app: posts`. which is basically saying, provide networking to the pods which are posts pods
+	- ports: if you inspect the code of posts, youll notice that it runs on PORT 4000. and ports takes in an array, so thats why we prefix it with a - and mention the protocol and name
+	- port and targetPort: targetPort is the port that our server/ posts server is listening to traffic on. the NodePort service is going to have a port of its own, and that is referred to as port
+	- now, port and targetPort dont have to be the same, its not a strict rule. if we mention a different Port number, it will redirect the traffic to the targetPort
+	- but its good practice to have the same port and targetPort 
+
+## accessing nodeport services
+
+- once we create this service and run `k get services`, we get
+```bash
+k get services
+NAME         TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)          AGE
+kubernetes   ClusterIP   10.96.0.1        <none>        443/TCP          4d1h
+posts-srv    NodePort    10.103.169.173   <none>        4000:31054/TCP   20s
+```
+- now in the ports column, we can see 4000/some random port btw 30k -> 32k
+- now this 2nd port is how we're going to access the service
+- so since we're using docker desktop, we can simply go to `localhost:2nd-port/posts`
+- for more info, we can run `k describe service posts-srv`
+```bash
+k describe service posts-srv
+Name:                     posts-srv
+Namespace:                default
+Labels:                   <none>
+Annotations:              <none>
+Selector:                 app=posts
+Type:                     NodePort
+IP Family Policy:         SingleStack
+IP Families:              IPv4
+IP:                       10.103.169.173
+IPs:                      10.103.169.173
+Port:                     posts  4000/TCP
+TargetPort:               4000/TCP
+NodePort:                 posts  31054/TCP
+Endpoints:                10.1.0.12:4000
+Session Affinity:         None
+External Traffic Policy:  Cluster
+Events:                   <none>
+```
+- and here under NodePort it says `posts  31054/TCP`, so we can do localhost:31054/posts and access it locally
+## creating a cluster ip service
+- now that we have our posts all setup
+- we'll next setup our event bus service
+- and the goal is to somehow allow these 2 pods to communicate with one another
+- now unfortunately these 2 pods cant comm. with each other directly back and forth, they _technically_ can but there are reasons as to why we never follow this approach
+	- theres no way to know the ip address where the pod is going to be hosted ahead of time
+- so when we create a new post, were going to emit an event to the event bus right? and we obv cant communicate directly
+- which is why we create a cluster ip service thats going to govern access to the event bus pod
+- and whenever an event is to be emitted, a req will be made to the cluster ip service
+- so when the event bus wants to broadcast an event, it will emit the event to a cluster ip that manages the posts pod
+- in essence, every pod will have a service
+- steps
+	1. build an event bus image
+	2. push to docker hub
+	3. create a deployment for event bus
+	4. create a cluster ip service for posts and event bus
+	5. wire everything up
+- now we can create a separate file for each of the services
+- or we can just write the logic in the same depl file for posts and event-bus
+- to create multiple objects in one yaml file, we separate them with 3 dashes `---`
+- our final yaml file should look like this, its basically a combination and modification of the posts-srv file
+```yaml [event-bus-depl.yaml]
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: event-bus-depl
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: event-bus
+  template:
+    metadata:
+      labels:
+        app: event-bus
+    spec:
+      containers:
+        - name: event-bus
+          image: briha2101/event-bus-service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: event-bus-srv
+spec:
+  type: ClusterIP
+  selector:
+    app: event-bus
+  ports:
+    - name: event-bus
+      protocol: TCP
+      port: 4005
+      targetPort: 4005
+```
+
+- then run `k apply -f filename.yaml`
+- when we run `k get services` we should see the new services
+```bash
+k get services
+NAME            TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)          AGE
+event-bus-srv   ClusterIP   10.104.40.133    <none>        4005/TCP         70s
+kubernetes      ClusterIP   10.96.0.1        <none>        443/TCP          4d2h
+posts-srv       NodePort    10.103.169.173   <none>        4000:31054/TCP   98m
+```
+- and we do the same thing for posts also
+- but we change the name of the service so as to make it clear that we want a separate clusterip service for posts and that the existing posts-srv is a different service
+
+## communicating btw services
+- whenever we'd like to communicate with a pod that has a clusterIP service, how do we know the URL for it?
+- the URL is the name of the service itself, so in which case, the URL for dispatching events from the posts to the event bus would be `http://event-bus-srv:4005`
+- we prefix `http://` with the name of the service, and then if its listening on any port, we mention the port as well
+- so we change the URL in the code, rebuild the image, push it to docker hub, restart the deployments
+
+## creating a load balancer service
+- now that we've created cluster api services and created deployments for all the microservice components, its time to convert even the front end into a cluster
+- so we're going to place the code in a pod and access it from outside, something like `docker run -p 3000:3000 image`
+- now our react app has to interact with posts, which we've done already using nodeport
+- but it also needs to interact with comments and query, how do we create this interaction interface?
+- approach #1 (not advisable AT ALL)
+	- create nodeports for whichever pod that we'll need to interact with
+	- but why is it bad? when we use this we are exposing a random port to the outside world
+	- when we stop and rereun, the port would obviously and change and by that logic, wed have to change the code in multiple pods and re run the deployments for all those clusters
+- approach #2
+	- the goal of a load balancer service (LBS) is to have one single point of entry for our cluster
+	- then were going to make sure our react app interacts with this lbs
+	- and were going to config it such that it takes the event and routes it to the appropriate pods cluster service
+
+### important terms
+- load balancer service
+	- tells kube to reach out to its provider and provision a load balancer. gets traffic into a single pod
+	- a lbs is a bit diff compared to other kube objs
+	- eventually we'll deploy all these clusters onto some cloud platform right?
+	- a lbs is going to tell our cluster to reach out to its cloud provider (wherever youve hosted) and provision something called a load balancer
+	- this load balancer exists outside of our cluster and its responsible for directing traffic from the outside world into our cluster/somepod
+	- our react app doesnt need the logic to know which data to send to which pod etc
+	- all we must do is send it to the lbs, and this lbs does all the routing, which is where ingress comes into picture
+- ingress/ ingress controller
+	- a pod with a set of routing rules to distribute traffic to other services
+	- ingress and ingress controller are 2 different things, but for the scope of this lecture lets assume theyre the same thing
+	- now, the lbs is going to send the req to the ingress ctrl
+	- this ingress ctrl is going to look at the path and based on its routing rules, will determine which pod to send it to
+
+## writing ingress config files
+- first we install `ingress-nginx` using ` k apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.1/deploy/static/provider/cloud/deploy.yaml`
+- and then run `k get pods --namespace=ingress-nginx` to verify the installation
+```yaml [ingress-srv.yaml]
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-srv
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: posts.com
+      http:
+        paths:
+          - path: /posts
+            pathType: Prefix # if you want to suppress errors you can use ImplementationSpecific
+            backend:
+              service:
+                name: posts-clusterip-srv
+                port:
+                  number: 4000
+
+```
+
+### explanation
+- metadata:
+	- name: The name of the Ingress object (here, it’s ingress-srv).
+	- annotations: Used to specify additional configurations. Here, it’s rewriting the target to the root (/)
+- spec: 
+	- ingressClassName: Specifies the type of Ingress controller to use (here, it’s nginx).
+	- rules: Defines how to route the traffic. (array)
+		- **host**: The domain name (here, it’s posts.com).
+		- **http**:
+			- paths: Specifies the path rules. just like how we define routes in express, with / at the end, we follow the same approach here as well when defining paths
+				- **path**: The URL path to match (here, it’s /posts).
+				- **pathType**: How the path should be matched (e.g., Prefix means the path prefix should match).
+				- **backend**: Specifies the service to send the traffic to.
+					- service:
+						- name: The name of the service to route to (here, it’s posts-clusterip-srv).
+						- port:
+							- number: The port number of the service (here, it’s 4000).
+```yaml [ingress-srv.yaml]
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-srv
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/use-regex: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: posts.com
+      http:
+        paths: # just like how we define routes in express, with / at the end, we follow the same approach here as well when defining paths
+          - path: /posts/create
+            pathType: Prefix # if you want to suppress errors you can use ImplementationSpecific
+            backend:
+              service:
+                name: posts-clusterip-srv
+                port:
+                  number: 4000
+          - path: /posts
+            pathType: Prefix # if you want to suppress errors you can use ImplementationSpecific
+            backend:
+              service:
+                name: query-srv
+                port:
+                  number: 4002
+          - path: /posts/?(.*)/comments # nginx/yaml doesnt support :id/comments syntax. instead we have to write regex and (.*) is a wildcard and allows anything as long as it ends with /comments
+            pathType: ImplementationSpecific # if you want to suppress errors you can use ImplementationSpecific or stick with Prefix
+            backend:
+              service:
+                name: comments-srv
+                port:
+                  number: 4001
+          - path: /?(.*)
+            pathType: Prefix # if you want to suppress errors you can use ImplementationSpecific
+            backend:
+              service:
+                name: client-srv
+                port:
+                  number: 3000
+
+```
+
+## intro to skaffold
+- automates many tasks in a kube dev env
+- makes it really easy to update code in a running pod
+- makes it really easy to create/delete all objs tied to a project at once
+- `brew install skaffold`
+```yaml [skaffold.yaml]
+apiVersion: skaffold/v4beta3
+kind: Config
+manifests:
+  rawYaml:
+    - ./infra/k8s/*
+```
+- what this code does is, it basically says when we start skaffold, run all these yaml files and when we stop, delete all these objects
+```yaml [skaffold.yaml]
+build:
+  local:
+    push: false
+  artifacts:
+    - image: briha2101/client
+      context: client
+      docker:
+        dockerfile: Dockerfile
+      sync:
+        manual:
+          - src: "src/**/*.js"
+            dest: .
+    - image: briha2101/comments-service
+      context: comments
+      docker:
+        dockerfile: Dockerfile
+      sync:
+        manual:
+          - src: "*.js"
+            dest: .
+    - image: briha2101/event-bus-service
+      context: event-bus
+      docker:
+        dockerfile: Dockerfile
+      sync:
+        manual:
+          - src: "*.js"
+            dest: .
+    - image: briha2101/moderation-service
+      context: moderation
+      docker:
+        dockerfile: Dockerfile
+      sync:
+        manual:
+          - src: "*.js"
+            dest: .
+    - image: briha2101/posts-service
+      context: posts
+      docker:
+        dockerfile: Dockerfile
+      sync:
+        manual:
+          - src: "*.js"
+            dest: .
+    - image: briha2101/query-service
+      context: query
+      docker:
+        dockerfile: Dockerfile
+      sync:
+        manual:
+          - src: "*.js"
+            dest: .
+
+```
+
+- what this code is doing is, whenever there is a change to any file in any of the directories, and if the file thats changed matches the regex mentioned in the `src` attribute, that file will be directly copied and pasted into the cluster automatically
+- if the change doesnt match the regex, such as a new package installation, the entire image will be generated again
+- NOTE: `skaffold.yaml` is placed in the root directory of your project. NOT in the infra/k8s folder
+- so navigate to the folder where you have the yaml file and run `skaffold dev` to startup skaffold
+- and whatever change we make, will be reflected in real time in the deployments
+- and if you want to stop it, `ctrl c` and this will delete all objs
+
+# arch of multi service apps
+## what did we learn so far?
+- the big challenge in microservices is data
+- there are diff ways to share data btw services, we are going with the async approach
+- asyn comm focuses on communicating changes using events to an event bus
+- this enables services to be 100% self sufficient
+- docker makes it easy to package up services
+- kube is a pain to setup but makes it easy to scale and develop services
+
+## painful things from the prev app
+- lots of duplicated code - express setup, route handlers etc
+- really hard to imagine and picture the logic flow btw services
+- diff to remember what properties an event must have
+- difficult to test event flows
+- machine gets laggy running kube, docker etc
+- what if you were crazy and did some crazy operations simultaneously, that would (potentially) break our model
+
+
+## proposed changes
+
+| old prj                                                                                                       | new proj                                                                 |
+| ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| a lot of duplicated code                                                                                      | build a cenral lib as an npm module to share btw our diff projects       |
+| really hard to imagine and picture the logic flow btw services                                                | precisely define all the events in this shared package                   |
+| diff to remember what properties an event must have                                                           | use ts                                                                   |
+| difficult to test event flows                                                                                 | write tests for as much as possible                                      |
+| machine gets laggy running kube, docker etc                                                                   | run a kube cluster in the cloud and dev on it almost as quickly as local |
+| what if you were crazy and did some crazy operations simultaneously, that would (potentially) break our model | introduce a lot of code to handle concurrency between services           |
+
+
+## what are we going to build?
+- a ticketing app like bms
+- features
+	- users can list tickets for sale, instead of the business
+	- other users can purchase the ticket
+	- any user can do both operations
+	- when a user attempts to buy a ticket, the ticket is "locked" for 15mins. the user has 15mins to enter their payment info
+	- while locked no other user can purchase that ticket. after 15mins, the ticket will unlock
+	- ticket prices can be edited if they are unlocked
+
+## tables/ resources
+- user collection
+	- email
+	- password
+- ticket
+	- title
+	- price
+	- userId (ref to user)
+	- orderId (ref to order)
+- order
+	- userId (ref to user)
+	- status - created, cancelled, awaiting payment, completed
+	- ticketId
+	- createdAt
+- charge
+	- orderId (ref to order)
+	- status - created, failed, completed
+	- amount
+	- stripeId
+	- stripeRefundId
+
+## diff services
+- auth - handles everything related to user signup, signin, logout
+- tickets - ticket creation/ editing. this service knows whether a ticket can be edited or not
+- orders - order creation/ editing
+- expiration - watches for orders to be created, cancels them after 15mins
+- payments - handles credit card payments. cancels orders if payments fail, completes if payment succeed
+
+## understanding resource ➡️ service relation
+- if you notice, except for expiration, we have a servcie for every resource
+- is this the best approach? probably not
+- its project specific and you have to think about it properly
+
+## events and arch design
+- events
+	- UserCreated
+	- UserUpdated
+	- OrderCreated
+	- OrderCancelled
+	- OrderExpired
+	- TicketCreated
+	- TicketUpdated
+	- ChargeCreated
+- architecture
+	- front end - next js
+	- we're going to have all the services interact with mongodb
+	- expiration is the only service that uses redis
+	- all of the services are going to talk to a NATS streaming server which is a prod grade event bus
+
+
+## project setup
+- the project has been setup in a diff gh repo, [ticket-booking-microservices-app](https://github.com/Brihadeeshrk/ticket-booking-microservices-app)
+- and a point i didnt mention before that i'm mentioning now, in dev when we need to spoof the ingress server by going to domains etc
+- (if the above point didnt make sense, in the above project we basically gave the url of posts.com, such that if the user goes to posts.com/endpoints he would be able to interact with our servers and services)
+- in order to do this, on mac we edit the `/etc/hosts` file by `vi /etc/hosts` or `code /etc/hosts`
+- and then we add a new record `127.0.0.1 posts.com`
+- and if we save, we get an error that says, retry with sudo (or something)
+- we enter the password and that's it, if we visit posts.com in the browser, we're indirectly hitting the localhost where our ingress server is running
+
+## auth service
+- an image was created and using skaffold, the containers, services and everything were created
+- one thing i observed is that, if i used ImplementationSpecific under pathType in the ingress-srv.yaml file, the server would work properly
+- but when i used Prefix, it all worked fine
+- so, just a note (not sure why, it isnt working. i havent done the research)
+
+# db management and modeling
+- using mongodb
+- every service we create will have its own db (one db per service)
+- and how are we going to interact with this db?
+- the db is going to be in its own pod, and we obv dont create pods as it is, so we create deployments, services etc
+- which is very similar to the auth-depl file
+- and this is the code for the `auth-mongo-depl.yaml` file, all the files we create will have the same naming convention, the service name-db-depl.yaml
+```yaml [auth-mongo-depl.yaml]
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-mongo-depl
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth-mongo
+  template:
+    metadata:
+      labels:
+        app: auth-mongo
+    spec:
+      containers:
+        - name: auth-mongo
+          image: mongo
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-mongo-srv
+spec:
+  selector:
+    app: auth-mongo
+  ports:
+    - name: db
+      protocol: TCP
+      port: 27017
+      targetPort: 27017
+```
+- the image name as you know is fetched from dockerhub, and the image name `mongo` is an official image by the mongo team and also as you know, it listens on port 27017
+
+
+## connecting to mongodb
+- when we run using skaffold, we get the deployed url: which is `auth-mongo-srv:27017/` and then after the / we give the name of the collection we'd like to give
+```ts [index.ts]
+import { json } from "body-parser";
+import express from "express";
+import mongoose from "mongoose";
+
+import { currentUserRouter } from "./routes/current-user";
+import { signInRouter } from "./routes/sign-in";
+import { signOutRouter } from "./routes/sign-out";
+import { signUpRouter } from "./routes/sign-up";
+import { errorHandler } from "./middlewares/error-handler";
+import { NotFoundError } from "./errors/not-found";
+
+const app = express();
+app.use(json());
+
+app.use(currentUserRouter);
+app.use(signInRouter);
+app.use(signUpRouter);
+app.use(signOutRouter);
+
+app.all("*", () => {
+  throw new NotFoundError();
+});
+app.use(errorHandler);
+
+const main = async () => {
+  // if (!process.env.MONGO_URI) {
+  //   throw new Error("MONGO_URI must be defined");
+  // }
+  try {
+    // await mongoose.connect(process.env.MONGO_URI);
+    await mongoose.connect("mongodb://auth-mongo-srv:27017/auth");
+    console.log("Connected to MongoDB");
+  } catch (err) {
+    console.error(err);
+  }
+
+  app.listen(3000, () => {
+    console.log("Auth listening on port 3000 🚀");
+  });
+};
+
+main();
+
+```
+
+
+## issues with ts + mongoose
+1. now, when creating a new user, the ts compiler doesnt know about the diff properties that need to be passed in order to create a proper document
+2. and another issue is, when we create the document, we may have properties like createdAt, updatedAt etc, that weren't a part of the type that we defined
+- so we have to exactly tell the ts engine what all properties we will expect
+- due to which, we'll have 2 schemas or types, one for the user collection and one for the individual user document
+
+solutions
+- we create a function that takes in only the required properties as input, and in that function, we create a user
+```ts [user.ts]
+import mongoose from "mongoose";
+
+// an interface that describes the properties that we need to create a new user
+interface UserAttrs {
+  email: string;
+  password: string;
+}
+
+const userSchema = new mongoose.Schema({
+  email: {
+    type: String,
+    required: true,
+  },
+  password: {
+    type: String,
+    required: true,
+  },
+});
+
+const User = mongoose.model("User", userSchema);
+
+const buildUser = (attrs: UserAttrs) => {
+  return new User(attrs);
+};
+
+export { User, buildUser };
+```
+
+- now it may be a bit annoying to import 2 diff exports from a file just to create a new user or smth no?
+- what if we created a function like `User.build({...}) `?
+- how do we do that? using the `schema-name.statics.custom-fn-name = functionCall here`
+- and if we do this also, the ts engine has no idea that such a custom fn even exists, so how do we fix that?
+- by creating another interface that tells the ts engine that such a function exists and it takes params such as this
+```ts [user.ts]
+import mongoose from "mongoose";
+
+// an interface that describes the properties that we need to create a new user
+interface UserAttrs {
+  email: string;
+  password: string;
+}
+
+// an interface that describes the properties a User model has
+interface UserModel extends mongoose.Model<any> {
+  build(attrs: UserAttrs): any;
+}
+
+const userSchema = new mongoose.Schema({
+  email: {
+    type: String,
+    required: true,
+  },
+  password: {
+    type: String,
+    required: true,
+  },
+});
+
+userSchema.statics.build = (attrs: UserAttrs) => {
+  return new User(attrs);
+};
+
+const User = mongoose.model<any, UserModel>("User", userSchema);
+
+export { User };
+```
+
+
+- but how do we fix the issue of any? the use of any would deny us the possibility of using intellisense or the . (dot) operator to access properties
+- so we need to define what a single user looks like
+- and this solves our 2nd issue too!
+```ts 
+interface UserDoc extends mongoose.Document {
+	email: string;
+	password: string;
+}
+```
+- and wherever we have any, we replace that with UserDoc
+- `const User = mongoose.model<UserDoc, UserModel>("User", userSchema);` basically is saying that, every record inside the model will be of type UserDoc and the model in itself will be of type UserModel
+- the final script is like
+```ts [user.ts]
+import mongoose from "mongoose";
+
+// an interface that describes the properties that we need to create a new user
+interface UserAttrs {
+  email: string;
+  password: string;
+}
+
+// an interface that describes the properties a User model has
+interface UserModel extends mongoose.Model<UserDoc> {
+  build(attrs: UserAttrs): UserDoc;
+}
+
+// an interface that describes the properties a user document has
+interface UserDoc extends mongoose.Document {
+  email: string;
+  password: string;
+}
+
+const userSchema = new mongoose.Schema({
+  email: {
+    type: String,
+    required: true,
+  },
+  password: {
+    type: String,
+    required: true,
+  },
+});
+
+userSchema.statics.build = (attrs: UserAttrs) => {
+  return new User(attrs);
+};
+
+const User = mongoose.model<UserDoc, UserModel>("User", userSchema);
+
+export { User };
+```
+
+
+## pw hashing
+- we're not going to use bcrypt
+- we're going to implement our own hashing function along with a class that compares hashes (for signin)
+
+## auth strategies
+- handling auth strategies such as cookies, jwt etc is tricky when it comes to MS
+- there is no clear solution
+- there are many ways to do it, and no one way is "right" or "perfect"
+- now obv we want to send the token for every api call we make
+
+### option1
+- we contain the logic for inspecting the token, checking for validity etc in the auth service
+- and whichever service we're interacting with, will send a SYNCHRONOUS req to the auth service, which is a direct req to the auth service
+- and this auth service will return the appropriate response
+- but as we know the disadvantages of sync comm, what if one day the auth service went down, then no service will let users use the app at all since all the inspecting logic is housed inside auth
+### option1.1
+- any req coming into our application will go through the auth service, and then to the desired service
+- like a gateway
+### option2
+- each individual service knows how to validate a user token
+- everything is wrapped up inside one service
+- no outside dependency
+- might think there is no downside, and no, its not code reusability
+- we could simply extract that logic into a package and perform it, but there are clearly other issues
+- what is the issue you ask? lets say the user a is banned from using the app and the admin bans him in the auth service, every other service is stand alone and we cant forcefully delete the token from their browser, so there's always this issue of communication btw services
+- but, how would we fix this security issue?
+- make sure the token is only valid for some fixed time
+- but what if we ban them and they still have time till their token is invalid?
+- as soon as the admin bans, we can send out an event like UserBanned or something with their details to all the services, and then when we process the api req we can check if this user exists in the banned list, if yes, reject else process
+- and we could store this banned list in a temporary memory, why temporary? because users can be banned and unbanned anytime and we only want to keep these details as long as the token is valid, because if the token is expired, they anyway have to reach out and revalidate themselves
+### so which option?
+- option 2 but with some changes
+- why option 2? because we really need to make sure services are isolated and independant
+
+### secrets in kube
+- just like deployments and services, we can also create an object called secret that can be accessed in pods as an env var
+- to create a secret we follow this syntax
+`k create secret generic jwt-secret --from-literal=JWT_KEY=asdf`
+- there are diff kinds of secrets we can have in k, another example would be a repo of images, generic just means its a general purpose secret
+- and this secret will be accessible to all the pods in our cluster
+- this command is an *imperative approach* where we create objects on our own as opposed to the *declarative way* where we wrote config files those objects in return create objects 
+- the reason is because, we dont really want a config file to list out all of our secrets
+- what we could do is, we could write config files that refer to the env vars declared in the OS, and thats okay, but we normally and obv dont put our secrets in config files
+- and to get our secrets, we can use `k get secrets`
+- how do we make sure that this container gets access to this key? by modifying the depl file for auth
+
+```yaml [auth-depl.yaml]
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-depl
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth
+  template:
+    metadata:
+      labels:
+        app: auth
+    spec:
+      containers:
+        - name: auth
+          image: briha2101/auth
+          env:
+            - name: JWT_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secret
+                  key: JWT_KEY
+```
+- the name of the key we'd like to share the env key as in name, and then where do you want to get it from? the object with the name jwt-secret and the name of the key
+### response uniformity
+- similarly to how you standardised the error messages, responses need to be uniform too!
+- one way to do that is by simply reforming the way mongodb or the db sends us the response
+```ts [user.ts]
+const userSchema = new mongoose.Schema(
+  {
+    email: {
+      type: String,
+      required: true,
+    },
+    password: {
+      type: String,
+      required: true,
+    },
+  },
+  {
+    toJSON: {
+      transform(doc, ret) {
+        delete ret.password;
+        ret.id = ret._id;
+        delete ret._id;
+        delete ret.__v;
+      },
+    },
+  }
+);
+```
+
+
+- in the schema, we can pass options, and there is a function offered by Mongoose called toJSON that in a way, converts our object to JSON and gives it to us
+- mongoose does this by default and gives it to us, but by mentioning it here and making changes, we are overriding the def behavior
+- the transform fn is also in built and takes in the curr doc, which objects you want to return and another 3rd options param
+- we dont want to send the password, we dont want to send `__v`, and want to rename `_id` to just id
+# server testing
+- what is the scope of the test?
+	- test a single piece of code in isolation - ex: a middleware
+	- test how diff pieces of code work together - ex: a req flowing through diff middlewares and then the controller
+	- test how diff components work tog - how auth service interacts with mongodb or nats
+	- test how diff services work tog - launch auth and some other service together and see how they work (very very complex)
+	- etc
+- types of tests we're going to write for the auth service
+	- basic req handling
+	- unit tests around models etc
+	- event emitting + receiving testing
+- rn, this auth project has very simple req, express and mongodb, and we can pretty easily execute tests in our system, but what if tomo we're dealing with some complex ass project that has some complex db and some os restrictions?
+- we're going to use _JEST_
+- we're going to tell JEST the following
+	- start in-memory copy of mongodb
+	- start exp server
+	- use supertest lib to make fake reqs
+	- run assertions to make sure the req did the right things
+- we need to separate app and index.ts and do some minor refactoring if we want to use supertest
+- and we're going to be using a package called mongodb-memory-server
+- why m-m-s? 
+	- great for testing- provides an isolated env for every test run
+	- speed
+	- ensures a clean and consistent state
+	- no ext dependency
+
+# skaffold dev error-note
+- if you come across this error, EVER
+
+```bash
+waiting for deletion: running [kubectl --context docker-desktop get -f - --ignore-not-found -ojson]
+ - stdout: ""
+ - stderr: "error: resource mapping not found for name: \"ingress-srv\" namespace: \"\" from \"STDIN\": no matches for kind \"Ingress\" in version \"\"\nensure CRDs are installed first\n"
+ - cause: exit status 1
+```
+- its probably because you havent created an image, or if you havent pushed the image properly to dhub
+
+# code sharing options between services
+## op1 - obv. copy-paste
+- few probs- a change in logic in one srv, will prompt you to again copy and paste in multiple srvs
+
+## op2 - git submodule
+- when you have one repo, and you want to include from another git repo here
+- one repo for auth stuff
+- one repo for ticketing stuff
+- one repo for common stuff
+- and then we pass in this common repo as a submodule
+- good but very complex and unnecessary
+
+## op3 - publishing as an npm pkg
+- wherever we need code, just install it as a dependancy and use it
+- but whenever there is a change in implementation, make the change, push the code to npm registry, go to the srv, update the package version by installing the latest one
+- create an a/c on npmjs
+- create an org inside of which youd like to publish packages, you can create just a package publicly, but this is a bit more organised
+- then create a common folder, run `npm init -y`, set the name of the project inside `package.json` as `@{orgname}/{packagename}`
+- there has to be a git repo, doesnt have to connected to a remote, just a git repo
+- so, `git init && gc -m 'INIT'`
+- then `npm publish --access public`
+- if we dont mention `--access public` its going to assume this is a priv pkg inside of our org and that means we have to pay
+
+## practices and approach
+- dont add ay settings such as tsconfig and all, that would cause conflicts with diff ts versions in other services
+- services might not be written in ts
+- so write the service in ts but publish it as js
+
+# NATS streaming server (event bus)
+- NATS and NATS STREAMING SERVER are 2 DIFF things
+- we are not using NATS
+	- NATS is a very basic implementation of event sharing 
+	- NATS server is built on top of NATS
+- we're going to use the docker image `nats-streaming` to run it
+- a comparison with the event bus we created earlier
+	- earlier, we used axios to send events to the bus, which in return used axios to emit those events to other services
+	- in this case, we're going to use a node package called `node-nats-streaming` and this has a socket-type connection code syntax, we're going to emit as well as receive events in our node server using this package
+	- now, nats is going to ask us to subscribe to certain channels and events are emitted to certain channels
+	- in nats, we're going to create a bunch of events/topics (these 2 mean the same)
+	- then while publishing events, we will say for eg: publish this to the ticketing:updated channel and this event will only be sent to those services that are listening for events in that channel
+	- so only services that care are going to receive them
+	- this nats will store all the events in memory and this will help when some service goes down and/or we add a new service
+	- an example of above and why its helpful; say we add a new service and say give me all the events so far, now this service is also up to date with whatever happened so far
+	- nats stores data in memory by default, but we can customise it to store the data in files in our hdd, mysql or postgres
+- whenever we deal with nats publishers (ones that publish events), we basically have 2 pieces of info: 1- the data itself, and 2- the channel we're going to publish this event to
+- when we publish this event, itll tell the nats server, that to whoever is listening/ or has subscribed to this event, send this event to them
+- and when we create a listener, we subscribe to certain events and this again tells the nats server that, if any event has been published for this event, lmk
+- a simple ex of we can publish events
+- the data has to be in JSON format
+```ts [publisher.ts]
+const stan = nats.connect("ticketing", "abc", {
+  url: "http://localhost:4222",
+});
+
+stan.on("connect", () => {
+  console.log("🚀 Publisher connected to NATS");
+
+  const data = JSON.stringify({
+    id: 122,
+    title: "title",
+    price: 10,
+  });
+
+  stan.publish("ticket:created", data, (err) => {
+    if (err) {
+      return console.log("🚨 Error publishing message", err);
+    }
+    console.log("🚀 Message published");
+  });
+});
+
+```
+
+- the publish fn optionally takes in a 3rd param, thats a callback fn
+- and the data that we send is commonly referred to as a `message`
+- and how do we deal with listeners?
+```ts [listener.ts]
+import nats from "node-nats-streaming";
+
+console.clear();
+
+const stan = nats.connect("ticketing", "123", {
+  url: "http://localhost:4222",
+});
+
+stan.on("connect", () => {
+  console.log("🚀 Listener connected to NATS");
+
+  const subscription = stan.subscribe("ticket:created");
+
+  subscription.on("message", (msg) => {
+    console.log("🚀 Message received", msg);
+  });
+});
+```
+
+- we're going to type annotate `msg` with `Message` from `node-nats-server` and if we inspect the type def file, there are some fns that are imp to us
+1. getSubject() - gives the channel/ subject the message was pub to
+2. getSequence() - gives the number of this event, all events start with 1, the 2nd will have 2 and so on
+3. getData() - returns the data that was sent along with the message
+- getData() returns either a string or a Buffer, so when we work with it, we have to do a simple check before we write code
+```ts [listener.ts]
+import nats, { Message } from "node-nats-streaming";
+
+console.clear();
+
+const stan = nats.connect("ticketing", "123", {
+  url: "http://localhost:4222",
+});
+
+stan.on("connect", () => {
+  console.log("🚀 Listener connected to NATS");
+
+  const subscription = stan.subscribe("ticket:created");
+
+  subscription.on("message", (msg: Message) => {
+    const data = msg.getData();
+
+    if (typeof data === "string") {
+      console.log(
+        `Received event #${msg.getSequence()} on subject: ${msg.getSubject()}`
+      );
+      console.log(data);
+    }
+  });
+});
+```
+
+- now lets say one service is getting a lot of traction, so one approach is to give it more CPU power or RAM
+- or we could also horizontally scale it by making one more copy of it
+- now the server would be identical to this one right?
+- so then it should technically connect to our NATS server no? - NO!
+- thats because NATS keep track of all the clients that are connected to it, and if you see this line `const stan = nats.connect("ticketing", "123", {`, the string 123 is whats known as a clientID
+- so if we run another copy of the service, it will fail as there will be a duplicate clientID and will face this error
+```bash
+Error: Unhandled error. ('stan: clientID already registered')
+```
+- in kube, there is a way of handling it, but for now lets use a randomly generated str
+- and now, we have no problem and can have as many listeners as we want
+```ts
+import {randomBytes} from 'crypto'
+
+const stan = nats.connect("ticketing", randomBytes(4).toString("hex"), {
+//...
+```
+- now since we have 2 listeners that are subscribed to the same event, it doesnt make sense to send them BOTH the same events
+- this is where we introduce something called QUEUE GROUPS
+- and this queue group will be created inside the channel
+- we can have multiple groups associated with one channel
+- lets say we create a queue group called `q123`
+- now, our listeners would have to join the queue
+- and then the queue group is going to look at our listeners and send it to one in random
+- and this is how we create a queue group
+```ts [listener.ts]
+const subscription = stan.subscribe(
+	"ticket:created",
+	"orders-service-queue-group"
+);
+```
+- and now if we publish events, itll be sent in random to one of the listeners, and you can check this by checking the getSequence() number, you'll notice that the same message is not being sent to all listeners
+- now only the first 2 params are strings, we can optionally add a lot more config and this would be a variable of type `stan.subscriptionOptions()`
+- and now this isnt an object, more over, we chain the options we want
+```ts
+const options = stan.subscriptionOptions()
+	.setManualAckMode(true)
+	.setDeliverAllAvailable()
+
+const subscription = stan.subscribe(
+	"ticket:created",
+	"orders-service-queue-group",
+	options
+);
+```
+
+- but what are some options we're going to use?
+- now, whenever we publish a message, a soon as a listener gets it, its acknowledged and its considered that the message was received. now this is the DEFAULT BEHAVIOUR
+- lets say, we're pushing the message off to the DB and we lose the connection with the DB, this message is now lost, and there is no way we can get it again
+- which is why we set one option without fail and that is the `setManualAckMode(true)`
+- so this way, we can ack the message only after successful processing of our msg
+- and if we dont ack, itll wait for some time (30s) and send it to a diff listener in the queue, or the same listener
+- and how do we manually ack it? `msg.ack();`
+
+## client health checks
+- now how does nats know if a listener has gone offline? we sort of already wrote that in the `nats-depl` file
+- `-hbi` `-5s` is a basically like a heart beat flag thats sent by nats to the entity every 5s
+- `-hbt` `-5s` is how long the entity has to give a response to the heartbeat
+- `-hbf` `2` is how many times the entity can fail before its removed from the subscription
+- which is also why we've added 2 signal listeners SIGTERM and SIGINT
+- upon receiving either of these signals, we'll be triggering the shutdown process
+```ts
+process.on("SIGINT", () => stan.close());
+process.on("SIGTERM", () => stan.close());
+```
+- but lets say we force quit the terminal or something, the server would still think the listener is active, which is why we have a fallback to heartbeat and failure etc
+
+### NOTE ABOUT SCALABILITY
+- scaling upwards - increasing specs, making it faster
+- scaling horizontally - increasing the no: of replicas and instances running
+
+## event redelivery
+- in the case that a listener goes down, or if you added a new listener to the queue group
+- there is one way you can update it w all the events that have taken place so far, and that is by chaining another option, the `setDeliverAllAvailable()`
+- this option will deliver all the events that took place 
+- but this isnt feasible, because what if we have 1000s or even more events, sending everything could crash our service
+- so to fix this we're going to work on something called a durable subscription, which is basically a sub with an id
+- so to do this, we add another option called `setDurableName()` and within this we pass in an identifier
+- inside, NATS is going to keep track of all the durable subs we have
+- then, for every event that was published and ack, NATS is going to keep track of all the events successfully processed along side this subs' id
+- so a combination of these gives us a durable subscription that remembers what events were passed, ackd and procd
+```ts
+  const options = stan
+    .subscriptionOptions()
+    .setManualAckMode(true)
+    .setDeliverAllAvailable()
+    .setDurableName("orders-service");
+
+  const subscription = stan.subscribe(
+    "ticket:created",
+    "orders-service-queue-group",
+    options
+  );
+```
+
+# connecting to nats from node js
+- rn this listener and publisher file is moderately and relatively big ad we cant copy-paste all this because we'll have many listeners and we need to reuse code as much as we can
+- so we'll modularise it and put it in that npm package
+- so..
+
+## listener
+- create an abstract class called Listener with the aim of automating a lot of the tasks that took place rn
+- why abs? so we can create instances of them like TicketCreatedListener and so on while having specific logic for that listener and also some general purpose code
+- like this
+```ts [Listener.ts]
+abstract class Listener {
+  abstract subject: string;
+  abstract queueGroupName: string;
+  abstract onMessage(data: any, msg: Message): void;
+  private client: nats.Stan;
+  protected ackWait = 5 * 1000;
+
+  constructor(client: nats.Stan) {
+    this.client = client;
+  }
+
+  subscriptionOptions() {
+    return this.client
+      .subscriptionOptions()
+      .setDeliverAllAvailable()
+      .setManualAckMode(true)
+      .setAckWait(this.ackWait)
+      .setDurableName(this.queueGroupName);
+  }
+
+  listen() {
+    const subscription = this.client.subscribe(
+      this.subject,
+      this.queueGroupName,
+      this.subscriptionOptions()
+    );
+
+    subscription.on("message", (msg: Message) => {
+      console.log(`Message received: ${this.subject} / ${this.queueGroupName}`);
+
+      const parsedData = this.parseMessage(msg);
+      this.onMessage(parsedData, msg);
+    });
+  }
+
+  parseMessage(msg: Message) {
+    const data = msg.getData();
+    return typeof data === "string"
+      ? JSON.parse(data)
+      : JSON.parse(data.toString("utf8"));
+  }
+}
+```
+- and how do we integrate this class?
+
+```ts
+const stan = nats.connect("ticketing", randomBytes(4).toString("hex"), {
+  url: "http://localhost:4222",
+});
+
+stan.on("connect", () => {
+  console.log("🚀 Listener connected to NATS");
+
+  stan.on("close", () => {
+    console.log("🚀 NATS connection closed!");
+    process.exit();
+  });
+
+  new TicketCreatedListener(stan).listen();
+});
+
+abstract class Listener {
+// code
+}
+
+class TicketCreatedListener extends Listener {
+	subject: string = "ticket:created";
+	queueGroupName: string = "payments-service";
+	onMessage(data: any, msg: Message) {
+		console.log(data);
+		msg.ack();
+	}
+}
+```
+- but the big issue still remains, how do we remember what props an event has and what happens if we accidentally mistype the name of the listener?
+- because rn theres no type validation at all
+- so what we did now is this
