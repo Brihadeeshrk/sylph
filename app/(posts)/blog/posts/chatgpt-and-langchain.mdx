@@ -1,0 +1,1628 @@
+---
+title: "chatgpt and langchain"
+time:
+  created: "2024-04-03T19:24:46.167Z"
+  updated: "2025-04-21T09:56:06.854Z"
+author: 
+  name: "briha"
+  link: "https://github.com/Brihadeeshrk"
+  handle: "Brihadeeshrk"
+---
+
+
+this notes file will be making comparisons with pdf.ai to understand how thats how working and to take all that knowledge and build it into something more
+
+# But first, how does pdf.ai work?
+so, there could be one of 2 ways this works
+
+## approach 1
+we take the pdf, and the user's prompt and we send EVERYTHING to chatgpt in the hopes that chat will answer it correctly, but more often than not, chat gpt has a word limit and the more content you send, the more money youll end up spending because more words, more money
+
+## approach 2
+we take the pdf, extract all the content from inside it, and divide it into chunks of say, 1000 words (which is configurable)
+then, store a summary of what each chunk is trying to say
+when a user asks some question, find the chunk of text that IS MOST RELEVANT to the users question
+and send the relevant chunk and the users question to chat gpt so chat can answer
+
+we'll be going with approach 2 (obvi)
+to generate this 'summary' what we do is, we take a chunk and we send it to what is known as an 'EMBEDDING CREATION ALGO' (ECA) and this is created something known as an 'EMBEDDING'
+
+now, this ECA is a key topic throughout this lecture
+an EMBEDDING takes a string and turns it into an array of numbers, this array is always going to be 1536 elements long, and each of these values ranges btw -1 and 1
+what do these elements mean? theyre discussing or rating the raw essence of what the text is talking about
+
+eg: for the string "Hello World!!"
+the embedding may look something like this (this is random but just for examples' sake)
+[0.9, 0.3, -0.3, ...... ]
+now the first element may be a score of how happy the string is, 
+the 3rd element may be a score of how much this text is talking about mountains etc...
+
+and since, these are numbers, we can end up doing math operations, which help us a lot
+and we're going to do these embeddings for every chunk and get a list of embeddings
+
+and once we get all these chunks, were going to store them in a db, we usually refer to these dbs that are specialised in storing embeddings as VECTOR STORES
+
+now, how do we find a chunk that is MOST RELEVANT to a chunk?
+we pass this query ALSO into the ECA and now we have an array of this query also right?
+now, we're going to do some math and check if this embedding is similar to the chunks in the vector store
+
+lets say, that chunk #3 is the most relevant one, we take the query and the chunk and send it as a prompt to chat
+and the response we get is what we show on the screen
+
+how do we send it to chat gpt?
+we basically send the chunk and the query in one prompt, and anyone can basically tell the answer when its right in the same paragraph right? which is why chat gpt is one of the least interesting bits in this whole thing bcoz its not really doing anything spectacular
+
+
+# why langchain and how does it work?
+langchain gives us tools to automate every single step we mentioned in approach 2
+
+goal of langchain
+provide interchangeable tools such as automate each step of a text generation pipeline
+has tools for loading data, parsing, storing, querying, passing it off to models like gpt
+integrates with a ton of diff services provided by a ton of diff companues
+relatively easy to swap out providers, dont want to use gpt? swap with a diff model in a few mins
+
+# chains
+what are the goals of using langchain? 
+1 - provide tools to automate every step of a text generation pipeline
+2 - make it easy to connect tools together
+
+a **chain** is the most fundamental and most important aspect of langchain, and its a class offered by LC, we use them to create reusable text gen pipelines
+we may use multiple chains and we can combine them to create complex pipelines
+a chain is composed of 2 ele, a prompt template and a language model
+
+## prompt template
+it produces the final prompt thatll be sent to the LLM. it needs to declare all the vars it needs to build this prompt, in the current example where we're going to ask an LLm to write us a program in a particular language, our vars in this case would be language and task
+
+## language model
+the llm that we wish to use to get this pipeline to work
+gpt, bard, claude etc
+
+## what are the inputs to a chain?
+its a dictionary that must contain values for each var that the prompt template requires
+
+## what are the outputs to a chain?
+its also a dict that contains the inputs AND the generated content, and this generated content will be in the 'text' key. and this 'text' can be changed to anything, could be renamed to response and so on
+
+## interlinking chains
+to feed the output of one chain directly into another chains input, we need to import another package from LC called SequentialChain
+
+# deep dive into interactions with memory management
+lets understand some terminology and concepts,
+LLM = large language model, its an algo that generates some amount of text, there are MANY models out there
+when we make use of LLMs there're 2 styles of interfaces that we get
+most LLms follow a COMPLETION style of text gen
+
+note, when dealing with docs from langchain, when the docs say llm, its assumed youre using a traditional model and a lot of the classes are built for trad style
+
+what is completion/ traditional LLM? lets say you give an input saying "im a comedian who jokes about taxes, and you sauy, have you ever noticed how"
+now, a traditional LLm would take the first statement into consideration and really complete this statement, very much like a fancy autocomplete
+
+another style is a CONVERSATIONAL model, some llms have been adjusted to have a back and forth type of exchange, so we say something, we get something back
+we say something else, we get something else back. but under the hood, these are still 100% completion models but have been tweaked
+
+now for a completion style llm, its fairly easy, weve already done it before
+input ➡️ llm ➡️ output
+
+but for a conversational style llm, the interface is more unique. why? because we have to somehow distinguish between my messages and the chatbots responses.
+so, when dealing with convo llms, there are 3 entities
+1) user message
+2) assistant message - message sent by the llm
+3) system message - a message to customise and dictate how the chat bot behaves. usually set by developers
+an example:
+for the system message: empty
+
+user message - what is html
+assistant message - html stands for .....
+
+
+for the system message: you are very rude and unhelpful
+
+user message - what is html
+assistant message - stfu
+
+so, now we can make a list of all the messages
+the system message goes at the top
+followed by user
+and then assistant
+and then user
+......
+
+the thing with chat models, is this
+now, lets say you ask a follow up question to smthn the assistant said, if you just asked why or what? the assistant would probably reply why what?
+so, whenever we deal with chat style responses, we more than typically sent the entire message history every time we want to extend a conversation. 
+
+now for a conversational style llm, its fairly easy, weve already done it before
+
+chatPromptTemplate - nested templates
+systemMessagePromptTemplate
+HumanMessagePromptTemplate
+
+`input ➡️ chatPromptTemplate ➡️ llm ➡️ op`
+
+
+## chat MEMORY
+MEMORY is a class offered by LC that used to store data in a chain
+MEMORY is made use 2 times in a chain, once when we initially call our chain and send some input vars
+and then after creating the template and getting the response from the chat llm, we call the same exact memory obj again
+ONE CHAIN ONE MEMORY
+
+### what does memory do
+when we first run the chain, the input vars are sent off to the memory obj and in that point, memory can take in those values, or it can take extra ones
+after we get the response from the chat llm, the outputs are sent to the memory and the memory has the chance to inspect and store some of it
+
+### what memory does in a chat chain
+LC has many kinds of memories
+ConversationTokenBufferMemory, CombinedMemory, ConversationBufferWindowMemory, ConversationBufferMemory and so on
+a lot of these memories are really in a way, completion based LLMs
+
+but we arent using completion models, so the memory that has support for chat based LLMs is ConversationBufferMemory and this is what were using to store the messages
+So, this ConversationBufferMemory (CBM) is going to store all the messages that we send and get back
+what does CBM do after we get a response from an LLM, it takes our message, the HumanMessage and the output, ie AIMessage and stores in messages 
+
+### but what does memory NOT handle?
+the memory, once it puts these messages into the input vars, it doesnt actually take them and push them into the model
+
+### how to actually deal with storing these messages?
+so inside our chatPromptTemplate we have our messages property right, what we could do is, we could add another field to this array called MessagesPlaceholder(variable_name='messages'), now this messagesplaceholder is going to look at the message property coz thats the config key we've put within the ()
+and now, this placeholder is going to replace itself with every message, be it human and/or ai
+
+### now dealing with saving these convos in a file called messages.json so that we can revisit them once we restart our file
+we need to import another class from langchain.memory and thats the FileChatMessageHistory and if we change the memory config slightly like this
+```python
+memory = ConversationBufferMemory(memory_key="messages", return_messages=True, chat_memory=FileChatMessageHistory('messages.json'))
+```
+
+and another logical question is, lets assume you have a VERY LONG convo, thats going to make this json file 1000000000+ lines long right? the files going to get too big
+there is a limit to that we can send to our LLm model, and if we're paying (in my case, we are) the longer the convo, the more were paying
+
+so, were going to use ConvertionSummaryMemory and its going to replace ConversationBufferMemory
+ConvertionSummaryMemory doesnt work very well with FileChatMessageHistory, so we're going to use one or the other
+
+# adding context and embedding techniques
+in this section we have a file called facts.txt and we're going to be asking the llm questions based from this txt file
+like eg: a fact may say; the color red is the most famous one
+
+and i could ask a question like, which color is famous
+so, the goal is find the most probable fact, send it to gpt and have it answer us the prompt
+
+now we need to load the facts.txt, we could do it using std py libraries but lets try and do it using LC
+LC provides classes to help load data from different types of files
+these are called LOADERS
+for .txt - TextLoader
+.pdf PyPDFLoader
+.json JSONLoader
+.md UnstructuredMarkdownLoader
+
+whats interesting is that, LC also gives us the classes to load up any kind of file from different locations, such as S3 bucket, called S3FileLoader
+this class will import all the files in this bucket regardless of their type
+note, some of these loaders are built on top of other packages, like PyPdf and so on
+
+
+## what do we mean when we say load a file?
+all these laoders, take a file and give back something known as a DOCUMENT. a doc is very imp thing inside of LC
+and document is a class in LC
+and every doc is going to have ATLEAST 2 properties, 1 - pageContent and 2 - Metadata
+metadata could store info like where did we get this data from etc
+
+## search criteria
+now, what are some ways we could potentially approach this problem?
+1 - we could take the entire doc along w the prompt and send it to gpt
+ with this, we have MANY downsides, such as: longer prmopts - so more money, take longer to get an answer
+2- another approach is, we could count the no: of words in the prompt, and find occurences of these words in the facts, but this way what if we use different words in the prompt but are trying to ask a very basic fact? this wouldnt work then right?
+
+which is why we need to explore embeddings
+
+## introducing embeddings and semantic search
+an embedding is a list of numbers btw -1 and 1 that score how much a piece of text is talking about some particular quality
+we refer to the number of elements in the array as dimensions, for eg: for a sentence: amy likes to jump over rocks bravely
+for dimensions BRAVERY and HAPPINESS, the embedding would be [1,1]
+as, the sentence talks about her happily and bravely jumping
+
+now we can plot these points on a 2d graph since we have 2 dimensions
+and from the origin (center) we can draw arrows to these points, also called as VECTORS
+we can come up with a way to deduce how similar these lines are
+1 - what is the dist between these 2 points, and we could repeat this process among all the lines and we can then deduce that the 2 points that have the shortest distance, are the most simiilar. called as the SQUARED L2 METHOD
+2 - look at the angle btw 2 lines also called COSINE SIMILARITY - using the angle btw 2 vectors to figure out how similar they are
+
+## embedding flow
+divide the file into chunks
+calculate the embedding for all the chunks
+store embeddings in a specialised db for embeddings (vector store) 
+take the users question
+embed the question
+do a similarity check with our stored embeddings to find the ones that are most similar to the users question
+put the most relevant 1-3 facts into the prompt along with the users question
+
+## chunking 
+```python
+from dotenv import load_dotenv
+from langchain.document_loaders import TextLoader
+from langchain.text_splitter import CharacterTextSplitter
+
+load_dotenv()
+
+text_splitter = CharacterTextSplitter(
+								separator="\n", 
+								chunk_size=200, 
+								chunk_overlap=0
+				)
+# chunking
+loader = TextLoader('facts.txt')
+docs = loader.load_and_split(
+	text_splitter=text_splitter
+)
+```
+
+
+we use the CharacterTextSplitter from langchain, and this is an explanation of how we'er chunking
+so, we first count he numbers of chars using the chunk_size var, and once we reach 200 chars, we look for the nearest separator, once we find that, then that becomes our first chunk. and chunk overlap is to put some kind of copying of text between each individual chunk
+
+lets say we give a very unrealistic chunk size of 10, then langchain would find the nearest separator and make the content till that separator a chunk, and since this violates the chunk_size property, langchain throws us a warning
+
+## generating embeddings
+there are many ways and many algos that we can use to create these embeddings, but in this case were only going to talk about 2 embedding models
+1 - SentenceTransformer - uses a set of algos that are going to run on your comp to calculate embeddings. will create 768 dims
+2 - OpenAI Embeddings - will create dims of 1536 dims. will cost money
+
+does this mean openai embeds are better? depends on use case
+but, we cant compare the 2 embeds with one another, as they are not compatible
+
+we're not going to sit and un the embeddings as they cost money, but we're going to wait until we have a place to store these embeddings so we can save money
+
+# custom doc retrievers
+
+## chroma db
+its a vector store that runs locally, internally uses sqlite
+
+```bash
+	pip install chromadb
+```
+
+```python
+# what youre doing here is, youre creating a new instance of Chroma and the from_documents
+
+# states that, you want to immediately calculate the embeddings for all the documents in docs
+
+# and after it runs, its going to stored in a sql directory called emb
+
+db = Chroma.from_documents(docs, embedding=embeddings, persist_directory='emb')
+results = db.similarity_search_with_score("What is an interesting fact about the english language?") # this will give us the similar records WITH score
+
+# if we run this line without k, then you may notice that we get MANY duplicates, so, when we run the Chroma.from_documents line we're essentially trying to calculate
+
+# the embeddings for them and we're going to store it in the db, and that means everytime we run it, we get a lot of duplicates and we dont want to do it
+
+  
+
+# so we need to build smthn, that finds these duplicates and gets rid of them
+
+results2 = db.similarity_search("What is an interesting fact about the english language?") # this will give us the similar records WITHOUT score
+
+  
+  
+
+# for result in results:
+
+# print('\n')
+
+# print(result[1])
+
+# print(result[0].page_content)
+
+  
+
+for result in results2:
+
+print('\n')
+
+print(result.page_content)
+```
+## building a retrieval chain
+so what happens is that, when we ran our script for the first time, it worked properly
+but as we kept running, more and more embeddings were created and stored in the vector store, which is now causing the same chunk to be delivered multiple times (duplicates) because its stored so many times
+
+so in order to counter this, we're going to separate our logic into 2 files, one file to load the txt file, parse and load it into chroma
+and another file thats going to run the Q&A process
+1. `chat = ChatOpenAI()`: Initializes a ChatOpenAI instance for conversational AI.
+    
+2. `embeddings = OpenAIEmbeddings()`: Initializes OpenAI embeddings for text processing.
+    
+3. `db = Chroma(persist_directory='emb', embedding_function=embeddings)`: Initializes a Chroma instance for vector storage and retrieval. Parameters:
+    
+    - `persist_directory`: Directory to persist Chroma data.
+    - `embedding_function`: Function for generating embeddings (in this case, OpenAIEmbeddings).
+4. `retriever = db.as_retriever()`: Creates a retriever object from the Chroma instance.
+    
+5. `chain = RetrievalQA.from_chain_type(llm=chat, chain_type="stuff", retriever=retriever)`: Initializes a RetrievalQA chain for question answering using a given language model and retriever. Parameters:
+    
+    - `llm`: Language model for generating responses (in this case, ChatOpenAI).
+    - `chain_type`: Type of retrieval chain to use (e.g., "stuff" for general purpose).
+    - `retriever`: Retriever object used to retrieve relevant documents.
+6. `result = chain.run("What is an interesting fact about the english language?")`: Runs the retrieval chain with a question/query.
+    
+7. `print(result)`: Prints the result obtained from the retrieval chain.
+
+
+### what is a retriever
+in the world of LC, a retriever is an obj that can take in a string and return some relevant docs
+to be a retriever, the obj must have a method called "get_relevant_documents" that takes a string, and returns a list of docs
+
+now, in the main.py file, if you remember we ran a query called similarity_search, now this is a query that is specific to chroma
+it does the same thing (almost) as a retriever but its specific to chroma
+
+now, LC is a framework that enables us to mix and match dbs, engines etc right? so the devs of LC made it such that, the developers of the DBs themselves have to expose a function called get_relevant_documetnts if you want to work with RetrievalQA
+this way, LC doesnt dive into the specifics of DB, but handles it from like an abstract view
+
+which is why, here we create a retriever from chroma
+```python
+retriever = db.as_retriever()
+```
+
+### what is chain_type="stuff"
+so when we say chain_type="stuff"
+what does stuff mean?
+so once we run and find chunks that match our query, what are we doing? we're adding it to the system message and asking gpt to ans our query right? 
+in other words what are we doing? we're STUFFING all the relevant chunks into 1 query right? thats why it says stuff
+most basic form
+
+3more chain types exist
+map_reduce
+map_rerank
+refine
+
+way more complicated than stuff
+#### map_reduce
+takes significantly longer to run than stuff, thats because we're calling our model 5 times as opposed to just once with "stuff"
+so lets go over what this does in the background
+
+we still have our prompt
+we still have our vector store 
+we still have our relevant chunks (fyi by default when we use chroma we get 4 relevant docs)
+
+so for each of these chunks, we're going to feed them into their own SystemMessagePromptTemplate and HumanMessagePromptTemplate, like this
+**SystemMessagePromptTemplate**: use the following portion of a long document to see if any of the text is relevant to ans the question, return any relevant text verbatim `{chunk}`
+**HumanMessagePromptTemplate**: here is the users question `{prompt}`
+
+and each of these chunks is going to give us a response
+
+IMPORTANT
+now, lets say the 4th chunk returned by the VS doesnt have any relevant fact, and we send it to GPT, GPT will hallucinate and make up some random fact that isnt relevant from our facts.txt
+
+so once we have the response from all these 4 prompts, theyre all assembled into 1 summary and are sent off to gpt again (5th TIME)
+**SystemMessagePromptTemplate**: use the following context to answer the users question `{summary}`
+**HumanMessagePromptTemplate**: here is the users question `{prompt}`
+
+and then we get a final answer
+
+#### map_rerank
+
+similar to map_reduce but one key difference, we also get a score/rating of how relevant it thinks the response it gives is
+so, 
+we still have our prompt
+we still have our vector store 
+we still have our relevant chunks (fyi by default when we use chroma we get 4 relevant docs)
+
+so for each of these chunks, we're going to feed them into their own HumanMessagePromptTemplates, like this
+**HumanMessagePromptTemplate**: use the foll pieces of context to ans the q at the end. if you dont know the ans, just say you dont know, dont make up an ans. in addition to giving an ans, also return a score of how fully it answered the users question `{chunk}`. it should be in the foll format "....." and also talks about how to rate it eg: 100 if it answers properly, 0 if it doesnt etc
+**HumanMessagePromptTemplate**: here is the users question `{prompt}`
+
+and each of these chunks is going to give us a response
+
+IMPORTANT
+now, lets say the 4th chunk returned by the VS doesnt have any relevant fact, and we send it to GPT, GPT will hallucinate and make up some random fact that isnt relevant from our facts.txt
+now, since this made up fact is technically relevant to the users question, it will give it a high rating, or it might put something from the doc and give it a low rating or 0
+SLIGHTLY better than map_reduce because of the score
+
+and then it finds the highest score and returns that to the user
+so, one less gpt call
+so 4 API CALLS
+
+#### refine
+so, 
+we still have our prompt
+we still have our vector store 
+we still have our relevant chunks (fyi by default when we use chroma we get 4 relevant docs)
+
+NOW its important to note that *map_rerank* and *map_reduce* ran those 4 chains SIMULTANEOUSLY
+
+BUT REFINE is running these chains in SERIES, ONE AT A TIME
+
+so for each of these chunks, we're going to feed them into their own HumanMessagePromptTemplates, like this
+**HumanMessagePromptTemplate**: use the foll ctx to ans the user's q `{ctx}`
+**HumanMessagePromptTemplate**: here is the users question `{prompt}`
+
+gives us a response
+
+now after we get the res from this chain, its taken and is fed into an other chain
+**HumanMessagePromptTemplate**: here is the users question `{prompt}`
+**AIMessagePromptTemplate**: `<< PREV RESPONSE >>`
+**HumanMessagePromptTemplate**: we have a chance to refine the ans using this additional context `{2nd chunk}`
+
+and the same goes on for all the 4 chunks /chains
+and whatever is returned at the last chunk is returned to the user as the final res
+
+### removing duplicates
+everytime we run main.py we duplicate the data and the main cause of this is the `Chroma.from_documents` fn call
+
+now, theres no way we can prevent duplicates from existing at all, but there is a way we can prevent them from going into the prompt
+and this is done by the **EmbeddingsRedundantFilter** class offered by LC
+
+this class is going to get a list of all relevant chunks, and its going to create embeddings for all of them, and these embeddings are similar, they will be removed
+
+But disadvantage?
+this is a stand alone class and it has to, IT HAS TO generate its own embeddings even though were storing it in the LC and with this we're making extra calls
+and, this also uses RetrievalQA, because this is going to take a query, and send it to the chroma retriever, and this retriever is going to return the relevant docs
+so, theres no way we can insert this class in the middle and all right? because RetrievalQA is an entire thing by itself
+
+so how do we handle this? we create our own retriever thats a class and its going to have the get_relevant_docs fn, that takes in a query and returns a list of docs
+here were going to use our chroma VS to find relevant docs and remove duplicate records
+
+### creating a custom retriever
+to make a custom retriever, we need to create a class that extends BaseRetriever, our custom retriever has to do 2 things
+- have a fn called get_relevant_documents that takes in a string and return a list of docs
+- have an async fn called aget_relevant_documents and this is in case we;re using async py, which we currently arent using regardless we're required to define it
+
+
+#### remember
+now, we need to calculate the embeddings manually
+```python
+from langchain.embeddings import OpenAiEmbeddings
+
+embeddings = OpenAIEmbeddings()
+result = embeddings.embed_query("hi there")
+
+print(result) # [-1, -.02, 0.1, ....]
+```
+
+if we ever want to use chroma to find similar docs to a string that we already have, we can take our chroma instance and call the similarity search and find the most relevant chunks
+now, 
+```python
+# now this is a query to find relevant chunks based on a string
+results1 = db.similarity_search_with_score("What is an interesting fact about the english language?") # this will give us the similar records WITH score
+
+emb = embeddings.embed_query("What is abS")
+# now this is a query to find relevant chunks based on an embedding
+results2 = db.similarity_search_by_vector(emb)
+
+print(results2)
+```
+so, when we use `similarity_search_with_score` chroma will internally create an embedding for this string and find similar chunks, so by using `similarity_search_by_vector` we're basically telling chroma not to run another embedding but to just use ours and find relevant docs
+
+turns out, chroma can already remove duplicates for us automatically using the `max_marginal_relevance_search_by_vector`
+```python
+emb = embeddings.embed_query("")
+
+resuts = db.max_marginal_relevance_search_by_vector(
+	embedding=embeddings,
+	lambda_mult=0.8 # 0 to 1, higher values allow for similar docs
+	# the higher it is, the more we allow similar docs
+	# if you want them to be unique, we can give a value of maybe 0.5
+)
+```
+
+and rather than re initialising chroma and openAiEmbeddings, ill just take them as params and use them in the class like this
+```python
+from langchain.embeddings.base import Embeddings
+
+from langchain.vectorstores.chroma import Chroma
+
+from langchain.schema import BaseRetriever
+
+  
+  
+  
+
+class RedundantFilterRetriever(BaseRetriever):
+
+embeddings: Embeddings
+
+chroma: Chroma
+
+  
+
+def get_relevant_documents(self, query: str) -> list:
+
+# calculate embeddings for the query string
+
+emb = self.embeddings.embed_query(query)
+
+# take those embeddings and perform feed them into max_marginal_relevance_search_by_vector
+
+return self.chroma.max_marginal_relevance_search_by_vector(
+
+embedding=emb,
+
+lambda_mult=0.6
+
+)
+
+async def aget_relevant_documents(self, query: str) -> list:
+
+return []
+```
+
+and in prompt.py instead of db._as_retriever()
+
+ill use our custom class
+```python
+# Create a retriever object from the Chroma instance
+
+retriever = RedundantFilterRetriever(
+embeddings=embeddings,
+chroma=db
+)
+```
+
+
+# empower chatgpt with tools and agents
+
+## process flow
+1. user submits a question "how many open orders do we have?"
+2. we merge the users question with instructions on how to use a "tool"
+3. gpt decides tat it needs to use a tool to answer the q (gtp response: to answer this question i need to run this sql query: "select * from ...")
+4. our app sees that gpt wants to use a tool
+5. execute query
+6. send result from query to gpt
+7. gpt now has all the info it needs to ans the original q
+8. user gets their ans
+the idea behind a "tool" is that, we're going to allow gpt to ask our app for some xtra context
+diff when we're using VS, as we kind of included some additional info along with the users question
+we're now allowing gpt to make these sort of requests for more info on its own
+
+## Context
+this is what we'll be sending gpt
+```
+you have access to the foll tools:
+
+- run_query: runs a sqlite query and returns the result. accepst an arg of a sql query as a string
+
+to use a tool, always respond with the foll format:
+
+{
+"name": <name of tool to use>,
+"argument": <argument to pass to tool>
+}
+
+<and here we pass the prompt from the user>
+how many open orders do we have?
+```
+
+
+
+## gpt functions and in more detail
+this method that we just did will work not only with gpt but with any LM, it works really well with completion based models
+so, when gpt was launched, the openai team noticed that a lot of people were using this method and since so much text is required to explain the tool, describe how to use it etc.. it uses up a lot of extra tokens in the prompt
+and another problem was that gpt would also respond with some text along with the json, which made it diff to parse the response in the code
+but rather than us taking this text based approach, gpt launched this new feature called GPT functions
+
+and this is what well be using
+GPT functions is basically this, but encoding them in a much more programmer friendly format
+
+so an eg:
+its understood by now, that whenever we send a message to chatgpt, we also send a list of messages right? for context
+now, each message we send will have a "role" and a "content" property
+now this role will specify where this prompt/response is coming from 
+
+for eg: role could be "user", "assistant" or "function"
+
+so, when we use gpt functions, we're not only going to send messages, but also a list of fns that we have, so this would be our initial req to gpt
+
+and in this prompt we're trying to do exact same thing as the text based soln above
+now this functions list, is an array of all the tools we have
+
+the parameters part is where most of the complexity comes
+params is an obj that describes all the diff args that gpt must provide to run this tool
+
+it must provide a query of type string and what is this query? its the sql query gpt is trying to execute
+```
+messages = [
+{"role": "user", "content": "how many open orders are there" }
+]
+functions = [
+{
+  "name": "run_query", # name of the tool
+  "description": "Run a sql query here. returns the result", # description of the tool and what it does
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "the sql query to execute"
+      }
+    }
+  }
+},
+{
+...
+}
+]
+```
+
+now, a deeper dive into the params object
+```
+"parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "the sql query to execute"
+      }
+    }
+} 
+```
+so this snippet of code follows a very specific format called JSON schema
+and its a schema that mentions how a piece of JSON should be formatted, whether its an obj, an arr, or a string
+or what properties it should have and what their types are
+
+luckily, there are many tools to help us get this schema
+[like this](transform.tools/json-to-json-schema)
+if this link doesnt work, just google generate json schema
+
+if we go with the link mentioned above
+on the lhs, we can just type in an example of what output wed like
+```
+{
+"query": "SELECT * FROM wdwdd;"
+}
+```
+and on the rhs, its going to automatically generate the schema for us
+but we can ignore the $schema and the title
+
+so we send all of this as our initial req to gpt
+
+so when we send this we get a response like
+```
+{
+  "message": {
+    "role": "assistant",
+    "function_call": {
+      "name": "run_query",
+      "arguments": {
+        "query": "SELECT COUNT FROM ORDERS;"
+      }
+    }
+  }
+}
+```
+the arguments we get here will be determined by the params object we send in the initial req
+
+so when we see all this, we parse it and make the appropriate fn call
+we then include this message into the messages[]
+and continue the convo
+
+```
+messages = [
+{role: "user", ..},
+{role: "assistant", ...},
+{role: "function", "content": 94}
+]
+```
+we send this and also all the functions
+
+very similar to the text based solution we had earlier
+
+## defining a tool
+we're going to use a fn by LC to define a tool with the above mentioned structure, name, description and func
+we're then going to take this tool and send it along with the prompt as part of our users question
+BEHIND THE SCENES, LC will convert this into the object that we saw in the prev section
+
+
+```python
+import sqlite3
+
+from langchain.tools import Tool
+
+conn = sqlite3.connect("db.sqlite")
+
+def run_sqlite_query(query):
+	c = conn.cursor()
+	c.execute(query)
+	return c.fetchall()
+  
+
+run_query_tool = Tool.from_function(
+	name='run_sqlite_query',
+	description='Useful for when you need to run a sqlite query',
+	func=run_sqlite_query
+)
+```
+
+## defining an agent and agent_executor
+```python
+from langchain.chat_models import ChatOpenAI
+from langchain.prompts import (ChatPromptTemplate, HumanMessagePromptTemplate, MessagesPlaceholder)
+from langchain.agents import OpenAIFunctionsAgent, AgentExecutor
+from dotenv import load_dotenv  
+
+from tools.sql import run_query_tool
+
+load_dotenv()
+
+chat = ChatOpenAI()
+
+prompt = ChatPromptTemplate(
+	messages=[
+		HumanMessagePromptTemplate.from_template("{input}"),
+		MessagesPlaceholder(variable_name="agent_scratchpad"),
+	]
+)
+
+tools = [run_query_tool]
+
+agent = OpenAIFunctionsAgent(
+	llm=chat,
+	prompt=prompt,
+	tools=tools,
+)
+
+agent_executer = AgentExecutor(
+	agent=agent,
+	tools=tools,
+	verbose=True
+)
+
+agent_executer("How many users are in the database?")
+```
+
+what is an agent?
+an agent is almost identical to a chain. only diff? an agent knows to accept a list of tools and how to use them
+will take that list of tools and convert them into JSON func descriptions
+still has input vars, memory, prompts, etc - all the normal properties a chain has
+
+what is an agent executor
+takes an agent and runs it until the response is NOT a fn call
+essentially a fancy while loop
+
+according to LC documentation, there are MANY Ways to create an agent
+you may see something like
+```python
+from langchain.agents import initialize_agent, AgentType
+
+executor = initialize_agent(
+			llm=chat,
+			tools=tools,
+			agent=AgentType.OPENAI_FUNCTIONS,
+			verbose=True
+)
+```
+now, this code is very similar to what we wrote above
+by using the above code, it automatically creates an agent for us instead of creating it manually like we did in our code
+and when using agents, our MessagesPlaceholder MUST HAVE a variable_name called "agent_scratchpad", otherwise the script wont run
+
+in a way, agent_scratchpad is a simplified form of memory
+
+now if we try to run some complex queries we run into some errors, so to tackle this we're going to make our agent more robust and add more tools so it can understand the db better
+
+## shortcomings
+now whats happening is that, gpt is assuming some of the columns we have in the db, and it just happened that we have a table called 'users' which is why it worked
+so its clearly assuming the structure of the db, the tables, the columns and in reality, doesnt know anything about the current table and sqlite file
+
+
+## how to tackle
+we're going to tackle multiple things. 
+1) error handling
+2) adding table context
+starting with error handling
+
+so whats happening now? when we encounter an error, the app is crashing and we get an error shown on the console. now, it just happens that we can understand what this error means, but if its something to do with a sqlite driver, etc.. how would we be able to disagnose?
+
+which is why, if we encounter an err, we're going to send that to gpt and *HOPEFULLY* gpt realises that maaaybe theres an error in the query it tries another approach
+
+now table context, we're going to do this by making 2more changes: 1) defining another tool 2) adding a system message
+and in the system message we're going to include all the table names we have in our db
+
+and the new tool? we're going to write another tool called describe_tool that lists all the table names and the columns the table contains
+this is the tool
+```python
+def describe_table(table_names):
+	c = conn.cursor()
+	tables = ', '.join("'"+table+"'" for table in table_names)
+	rows = c.execute(f"SELECT sql FROM sqlite_master WHERE type='table' AND name IN ({tables});")
+	return '\n'.join(row[0] for row in rows if row[0] is not None)
+
+  
+
+run_describe_table_tool = Tool.from_function(
+	name='run_describe_table',
+	description='Given a list of table names, returns the schema of those tables',
+	func=describe_table
+)
+```
+and this is the system message we've given just to make sure and tell gpt
+```python
+SystemMessage(content=(
+"You are an AI assistant that has access to an SQLite database. "
+f"\nHere are the tables available: {tables}. "
+"Do not make any assumptions about what tables exist or what columns they have. "
+"Instead, use the 'run_describe_table' function"
+)), # System message
+```
+
+one thing that was observed is that, if we go back to ## gpt functions and in more detail and check the format of the functions[] we can see that we have a thing called properties where we define the argumentname and we tell what type, and also give its description right?
+
+it was observed that LC, when sending the fns[] to gpt, simply put `__arg1`, `__arg2 `etc 
+now, the code is working, but we could manually make it easier for gpt by overriding this naming convention
+
+## tools with multiple args
+here we use structuredTool
+why?
+because of some legacy code in the LC codebase, the Tool class can only use functions that take in a single arg
+and if we need to use a tool that has to take multple args, then we have to use the structuredTool class
+
+check the code to understand how to use it (has been committed)
+
+## memory vs agent scratchpad
+```python
+agent_executor("How many orders are there? write the result to a html report")
+
+agent_executor("repeat the exact same process for users")
+```
+
+now, the 2nd executor will only run if gpt somehow remembers what the 1st prompt /idea was right?
+so when we run the file, the 1st query runs flawlessly, but the 2nd no!
+it doesnt have the slightest clue on what to do and just tried to understand the table schema or some shit like that
+theres no info sharing between these 2 prompts
+
+now coming back to the ChatPromptTemplate, we gave the MessagesPlaceholder a variable name called agent_scratchpad
+now i may have mentioned that its memory, but it isnt. sorry
+
+but what does agent_scratchpad mean and how can we integrate memory?
+
+long story short, the messages[] and fns[] that we see agents sending to and from gpt are managed by the agent_scratchpad
+and these AIMessages and Function Call Messages come under whats known as intermediate_steps
+so, when gpt feels like we've answered the question the user is asking, the prompt ends and this messages[] and fns[] is cleared
+
+to solve this issue, we're going to add memory
+but memory here doesnt really work as we've learnt it would all this while and thats the point of this section
+
+so, when we do use memory, only the final AIMessage is saved to memory while all the intermediate_steps are cleared from memory as they did before
+so in the end, the first HumanMessage ie, our prompt and the final AIMessage, ie the final response is what is stored in memory
+
+## callbacks
+used not only for debugging for other stuff too
+adding this because if we turn verbose=False we cant really see shit, so this is to fix that and show some intermediary messages
+so what we're going to do is we're going to create 'handlers' which are classes that are inherited from another Base class
+and these handlers will have VERY SPECIFIC FUNC NAMES and then we pass these handlers off to our agents and whenever a certain event occurs, due to the specific nature of our func names inside the handler, these fns will be automatically called
+
+
+possible events we can handle
+1. LLMS - 
+	1. on_llm_start(), 
+	2. on llm_new_token() _called when the model receives a token in stream mode_
+	3. on_llm_end()
+	4. on_llm_error()
+2. CHAT MODELS - 
+	1. on_chat_model_start
+	2. on_llm_new_token() _called when the model receives a token in stream mode_
+	3. on_llm_end()
+	4. on_llm_error()
+3. TOOLS - 
+	1. on_tool_start()
+	2. on_tool_end()
+	3. on_tool_error()
+4. CHAINS-
+	1. on_chain_start()
+	2. on_chain_end()
+	3. on_chain_error()
+5. AGENTS-
+	1. on_agent_action()  _called when the agent receives a message_
+	2. on_agent_finish() _called when the agent is finished_
+
+## a very basic handler
+
+```python
+from langchain.callbacks.base import BaseCallbackHandler
+
+class ChatModelStartHandler(BaseCallbackHandler):
+	def on_chat_model_start(self, serialized, messages, **kwargs):
+		print(messages)
+```
+here im defining a very basic handler called ChatModelStartHandler that extends the class from LC
+and here, as we previously mentioned, we have some very specific fn names, and this fn takes some args
+now this is just some of them but in reality we have MANY
+what does serialized mean? if im not wrong its apparently a json representation of our model
+what are messages? its a List[List[BaseMessages]] what is this complex structure? basically its an array of array of messages that are made and this function runs as soon as the model starts.
+
+but how do we link this handler?
+```python [main.py]
+from handlers.chat_model_start_handler import ChatModelStartHandler
+
+# Load environment variables from .env file
+load_dotenv()
+handler = ChatModelStartHandler()
+
+# Initialize a ChatOpenAI instance
+chat = ChatOpenAI(
+	callbacks=[handler]
+)
+```
+
+## going into more detail with this handler
+
+```python
+from langchain.callbacks.base import BaseCallbackHandler
+from pyboxen import boxen
+
+  
+
+# going to recv some args and some keyword args
+
+def print_boxen(*args, **kwargs):
+	print(boxen(*args, **kwargs))
+
+  
+
+class ChatModelStartHandler(BaseCallbackHandler):
+	def on_chat_model_start(self, serialized, messages, **kwargs):
+		print("\n\n===== sending messages =====\n\n")
+		for message in messages[0]:
+			if message.type == 'system':
+				print_boxen(message.content, title=message.type, color="yellow")
+		
+			elif message.type == 'human':	
+				print_boxen(message.content, title=message.type, color="green")
+		
+			elif message.type == 'ai' and "function_call" in message.additional_kwargs:
+				call = message.additional_kwargs["function_call"]
+				print_boxen(f"Calling function {call['name']} with args {call['arguments']}", title=message.type, color="blue")
+			
+			elif message.type == 'ai':
+				print_boxen(message.content, title=message.type, color="cyan")
+			
+			elif message.type == 'function':
+				print_boxen(message.content, title=message.type, color="magenta")
+			
+			else:
+				print_boxen(message.content, title=message.type, color="white")
+```
+
+should be self explanatory but i'll just go over the one elif condition that was a bit tricky to understand
+```python
+elif message.type == 'ai' and "function_call" in message.additional_kwargs:
+		call = message.additional_kwargs["function_call"]
+		print_boxen(f"Calling function {call['name']} with args {call['arguments']}", title=message.type, color="blue")
+```
+
+so in this case, function call messages are technically ai messages, so we had to distinguish them somehow which is why we added that extra check to see if message's additional keyword args had a property calledar  "function_call"
+so if it did, we store the contents of this 'function_call' in a var called call
+and this 'call' has a few properties, name: being the name of the function to call
+and ofcourse, arguments which are: what do i pass to this function
+
+
+so for example, for the run_query_function
+the name would be : run_query or whatever you give inside the Tool.from_function() declaration, and the args would be the query itself SELECT `*` FROM X;
+
+# pinecone as a vector db
+big goal:
+1. user logs in
+2. user uploads a pdf
+3. we generate embeddings
+4. user asks questions about pdf
+5. we find relevant docs
+6. put prompt+relevant docs in LLM
+7. show user the ans
+8. user can like/dislike an ans
+
+## code structure
+so in the pdf directory
+we'll mostly be working in the chat and the web directory
+we have 
+
+the app folder
+	- celery - config for the "worker" (will discuss later)
+	- chat - where we'll do 99% of all the work, contains everything for processing pdfs, embeddings, text generation etc
+	- web -  server code. functions to handle req, db access etc\
+the client folder
+	- all the html, js and styling that shows up in the browser
+
+.env - env vars
+
+tasks.py - defines shortcut commands to run the server like `inv dev`
+
+we need to build the app/chat module
+and we also have the app/web module. now, this module is mostly complete. contains mostly web-dev stuff
+now, app.chat is going to call 4 fns provided by app.web ie
+- get_messages_by_conversation(id)
+- add_message_to_conversation()
+- get_conversation_components()
+- set_conversation_components()
+all of these fns are already complete and are located at app/web/api.py
+
+and, our app.web module is going to have to call some fns from our chat module, that we have to implement now!
+- build_chat()
+- create_embeddings_for_pdf()
+- score_conversation()
+- get_scores()
+
+## outlining our first feature
+first, we're going to work on the create_embeddings_for_pdf()
+
+general outline
+when we upload a file to the server
+it generates an id and a path, we pass these 2 to the embeddings fn
+now this fn, uses a LC loader to extract text from the pdf
+creates a textSplitter
+uses the loder and splitter to split the pdf into chunks called as documents
+update the metadata of the document (skipped temporarily)
+add the docs to a VS (pinecone)
+
+## configuring pinecone
+
+visit pinecone.io which is a hosted VS
+we're going to create an index, and we can think of an index as a DB, generate an API key
+add env vars to the .env file
+install the pinecone client
+create client and wrap it up with LC
+
+## introducing bg jobs
+the idea of bg jobs is not new and pretty much all services use this
+where do we use these bg workers?
+sending emails, processing file uploads
+report gen, content moderation
+file conversion, bulk operations
+search indexing, complex calcs
+recomm gens, data import/export
+
+flow
+we have the py server 
+we send a job to a Message Broker saying please generate embeddings for sds.pdf
+and we'll be using Redis as a Message Broker
+
+and we'll make this worker
+
+
+
+but why do we need this Message Broker? 
+we need to scale this app such that when our app is super popular, we might be running multiple copies of our py server and we might have so many users trying to upload these files
+
+so the message broker, is going to take all these jobs and place them in a queue and order them all up and its going to send them to all the workers we have in our app
+
+so the job of a MB is to assign tasks evenly amongst our workers such that we finish all the jobs asap
+a benefit of this, if we feel the app is slow and shit, we can just add more workers and if we dont have a lot of clients, we can scale down to maybe 1 worker
+
+## setup redis
+now, to implement this MessageBroker we're going to use a library called CELERY
+CELERY is a py specific lib
+other langs have similar libs
+celery iss going to manage everything about our jobs
+
+so, we're going to use celery to send jobs to redis and we're also going to use celery to receive this jobs inside of our worker
+
+since im on mac, i can install redis using homebrew
+and run `redis-server` to start the server
+
+## why do we have to modify the metadata?
+so lets say we open a pdf to chat and we ask the question: "what is this pdf about?"
+in our pinecone db, lets say we've uploaded 2-3 pdfs
+
+right now, theres no clear distinction that this document belongs to abc.pdf, this doc belongs to xyz.pdf
+
+so, when we send this prompt, we may get responses from like 2-3 diff pdfs
+
+so what we're going to do is, we're going to remove the source property and replace it with a pdf_id property
+
+# custom message histories
+here we're going to work on the build_chat()
+
+lets go over our requirements to better understand what this fn is going to do
+so, 
+when we ask a question, we're going to tell our server to start a chat chain with this prompt to generate some new text and send that text back to the user
+
+in reality, its going to build and return a chain that will be used by the web module and we're going to return this chain back to the front end
+
+flow
+when a user clicks on a pdf to chat with
+they hae to chat with THAT PDF only
+all doc retrievals should come from the pdf the user is viewing
+
+the user can have multiple persistant convos
+and within a convo there can be MULTIPLE messages
+and this "persistence" is going to be built out of the scope of LC and gpt/llm
+some user messages will be unclear or they may refer to prev messages in the convo, in other words, we need context
+
+## requirements
+
+we're going to scope the doc retrieval process to a single pdf
+need to organise and persist msgs + convos so they can be used by chat and web
+need to handle vague user messages
+
+### option 1
+store all the msgs on the client, ie, the browser
+so when the user submits a question, send all the messages over
+simple method and this is how the openai api works in general
+openai itself doesnt persist any messages, its our application that does all the persisting
+
+option 1 is easy but has some immediate downsides
+1. if the user refreshes/closes the tab, all the messages are lost. NO PERSISTANCE
+
+### option 2
+store the messages on py server in a ChatBufferMemory
+
+again some downsides are there:
+CBM stores messages in a list in comp memory
+and if the server is restarted, all the msgs are lost
+
+and if we create one instance of CBM, then all of our users will be sharing that same memory
+but if we did go with CBM
+every user would have to have their own CBM
+and then every pdf would have to have CBMs of convos and every convo again would need its own CBM
+but then again, not persistent so we need a diff approach
+
+### option 3
+ store all of our messages in a db
+ and inside this db, theres a row for every message
+ id conversation_id role and content
+ id - of the message
+ conversation_id - id of the convo
+role - human or ai
+content - uk
+
+so we need to develop some custom memory such that, it searches this db for messages for a particular convo based on its id and stores it and shows it to the user
+we're going to be using this approach
+
+## introducing convo retrieval chain
+if you forgot what a retrievalQA chain is
+a quick refresher:
+users prompt -> users prompt as an embedding -> pinecone retriever finds the most relevant doc -> embeds the prompt and the most relevant doc -> sent to gpt -> get ans -> send to user
+
+but if we use this chain, theres one big downside
+it doesnt have the concept of memory
+RetrievalQA is deigned for a single question + single answer and its not meant to be used in a convo
+
+so hence were going to use a diff chain: CONVORETRIEVAL CHAIN
+consists of 2 chains inside it
+inside the src code, they are defined as CONDENSE QUESTION CHAIN, and COMBINE DOCS CHAIN
+and both of these chains are supported by a single copy of memory
+
+how does this chain work?
+so when we start our chat
+the first chain: CONDENSEQUESTIONCHAIN (CQC) is empty so we directly move on CDC and we combine the docs and send it to the LLM 
+CDC works almost exactly like retrievalQA
+
+so now, after getting the result, CDC will add the users prompt and the final ans to the memory
+
+so now if we run the chain again, CQC will NOT be skipped as we now have chats in the memory.
+
+what happens when we send a 2nd message?
+we take the i/p
+we take the memory
+and we merge it into a prompt and this is exactly how the prompt is (taken from LC docs)
+"given the foll convo and a follow up question, rephrase the follow up q to be a standalone q, in its original lang
+chat history:
+HUman:
+Assistant:
+Followup input:
+Standalone question
+"
+and we pass this into the LLM and we get the response and we pass this rephrased prompt to the CDC
+and as we mentioned in the prev step, the users prompt (original) and the CDCs answer is added to memory
+
+
+## building retrievers
+lets say user a is chatting with pdf 122
+and user b is chatting with user 134
+we need to create 2 separate retrievers
+
+so we're going to create a memoryfn called SqlMessageHistory where we append every message we get into the sql table
+
+for ref, in the tchat project, you remember how everytime we asked a prompt we'd store the prompt in a json file?
+exactly the same but instead of a json file we're storing it in sql in a very specific format. thats it
+
+# streaming text generation
+so far, we've been using BULK TEXT GEN
+as in, we send a prompt and only after the entire response is generated do we give it back to the user
+sort of bad experience when we use it in a browser env
+so we're going to enable streaming
+
+for this we have to config our LM in such a way that it streams the res back to us
+so basically the LM would generate texts in chunks, and we send these chunks back to the FE as soon as we get it
+config-ing the LM to enable streaming is easy but to setup our py server such that we show these chunks in the FE is where all the work is at
+
+IMP POINT
+LLMs ARE HAPPY TO STREAM
+CHAINS ARE UNHAPPY AND DONT WANT TO STREAM
+
+## experimenting with streaming
+lets create a sample test file and understanding streaming there
+```python
+from langchain.chat_models import ChatOpenAI
+from langchain.prompts import ChatPromptTemplate
+from dotenv import load_dotenv
+load_dotenv()
+
+chat = ChatOpenAI(streaming=True)
+prompt = ChatPromptTemplate.from_messages([
+("human", "{content}")
+])
+
+messages = prompt.format_messages(content="tell me a joke")
+
+output = chat(messages)
+print(output)
+```
+so now what exactly is our flow?
+we send our prompt to LC
+LC sends the prompt to GPT
+GPT gives a res back to LC
+LC gives it to us
+
+so we can break down the communication into 2 gaps
+now, the `streaming=True` will dictate how GPT talks to our LC when giving the response
+now, we can call a prompt in many ways in LC
+```python
+from langchain.chat_models import ChatOpenAI
+from langchain.prompts import ChatPromptTemplate
+from dotenv import load_dotenv
+load_dotenv()
+# ...
+output = chat(messages) # method 1
+output = chat.__call__(messages) # method 2
+output = chat.invoke(messages) # method 3
+```
+
+now, the way we call the model is going to dictate how LC talks to us
+so, `__call__()` dictates how GPT Talks to LC AND how LC talks to us
+
+now, im just using `__call__` as an example, but what im trying to say is, the fn we use to invoke GPT will dictate the type of response we get from GPT and to us
+
+but if we need streaming, we must use the `.stream` fn, and `.stream` is going to override whatever flag we give for `streaming` in the model declaration
+
+now, if i clog output, i get a `generator`, now a generator is a for loop that allows us to recv little chunks of info over time 
+so we can rewrite that fn like this
+```python
+for message in chat.stream(messages):
+	print(message)
+```
+so when we run this, we get the op in this format
+```bash
+content=''
+content='Why'
+content=' did'
+content=' the'
+content=' scare'
+content='crow'
+content=' win'
+content=' an'
+content=' award'
+content='?'
+content=' Because'
+content=' he'
+content=' was'
+content=' outstanding'
+content=' in'
+content=' his'
+content=' field'
+content='!'
+content=''
+```
+and according to LC docs, theyre referred to as BASE MESSAGE CHUNKS OR AI MESSAGE CHUNKS
+
+```python
+from langchain.chat_models import ChatOpenAI
+from langchain.prompts import ChatPromptTemplate
+from dotenv import load_dotenv
+load_dotenv()
+
+chat = ChatOpenAI(streaming=False)
+prompt = ChatPromptTemplate.from_messages([
+("human", "{content}")
+])
+  messages = prompt.format_messages(content="tell me a joke")
+
+# output = chat.stream(messages)
+for message in chat.stream(messages):
+	print(message.content)
+```
+now even though we've declared streaming as False, we still get streaming as the way we invoke the model determines and can override the way we receive data from GPT
+
+if we modify the code to use chains, we still get the behaviour if we'd set streaming to False, but we also get the data in a key:value pair type
+where we have content: which is the initial prompt we asked
+and we have text: which is the response
+
+LLM Chains really want to process the full res before returning anything to the user
+now, if you check LC docs, there is a way we can enable streaming in chains also, but theres a change in the way we call it
+```python
+chain = LLMChain(llm=chat, prompt=prompt)
+
+op = chain.stream(input={"content": "tell me a joke"})
+# why content? because thats we aliased the prompt earlier
+```
+but this is not the solution
+even though this says stream, it actually just gives the res at once
+
+so if you clog op, youll end up getting a generator, which will in return contain one value, which is the entire text result
+and as per the `.stream` src code for chains, it clearly says if you want to stream, you must override this fn
+
+how do we override it? using callbacks
+we're going to call this new callback StreamingHandler and we're going to work on the on_llm_new_token fn
+so whenever we recv a chunk of data, (or token) this fn will be called
+
+## how to extend a chain such that we can implement streaming on it
+1. override the chains stream fn
+2. the stream fn returns a generator that gives out (produces) strings
+3. the stream fn should run the chain also
+4. send data from on_llm_token() to this generator
+
+lets go over all these subtasks one by one
+1. so what we could do, is we can extend the LLMChain class and override the stream fn like this
+   ```python
+class StreamingChain(LLMChain):
+	def stream(self, input):
+		print("hello there")
+
+  
+
+chain = StreamingChain(
+	prompt=prompt,
+	llm=chat
+)
+
+chain.stream("sfhdjf") # hello there
+```
+
+
+2. now, how do we return a generator? simple using the keyword `yield` along with strs would give us a generator
+```python
+class StreamingChain(LLMChain):
+	def stream(self, input):	
+		yield "hello"
+		yield "world"
+
+
+chain = StreamingChain(
+	prompt=prompt,
+	llm=chat
+)
+
+for output in chain.stream("sffdfdfd"):
+	print(output)
+```
+3. how do we ensure that this overridden fn should run the prompt also?
+```python
+class StreamingChain(LLMChain):
+	def stream(self, input):
+		print(self(input))
+		yield "hello"
+		yield "world"
+
+
+chain = StreamingChain(
+	prompt=prompt,
+	llm=chat
+)
+
+for output in chain.stream(input={"content":"tell me a joke"}):
+	print(output)
+```
+4. how do we get data from the callback handler to this stream fn?
+   we use a queue
+   so whatever tokens we get inside the callback fn, well insert it into the queue and this stream fn will run an infinite while loop and just dequeue everything
+```python
+from queue import Queue
+
+queue = Queue()
+class StreamingHandler(BaseCallbackHandler):
+	def on_llm_new_token(self, token, **kwargs):
+		queue.put(token)
+
+class StreamingChain(LLMChain):
+	def stream(self, input):
+		self(input)
+		while True:
+			token = queue.get()			
+			yield token
+
+
+chain = StreamingChain(
+	prompt=prompt,
+	llm=chat
+)
+
+for output in chain.stream(input={"content":"tell me a joke"}):
+	print(output)
+```
+like this, but theres still an issue, when you run this code you may observe that initially there's a delay and then the chunks sort of are sent ALL AT ONCE!
+why? because as we've gone over it before, chains just want to wait till they have the entire response and which is why the execution was paused at self(input) till the entire res was recvd
+which is why as soon as the entire response was collected, the while loop got executed and emptied everything very quickly
+
+### how do we solve this?
+so we use diff threads to execute diff parts of the program
+so from the threading lib we import Thread and we define a subfn called task() whos only jon is to run self(input)
+
+and we assign this to a thread and ask it to start immediately
+so while one thread is working on this, we can move on to the remaining part of the code and the control no flows to the while loop
+```python
+class StreamingChain(LLMChain):
+	def stream(self, input):
+		def task():
+			self(input)
+	
+	Thread(target=task).start() #telling the thread to start immediately
+	while True:
+		token = queue.get()
+		yield token
+```
+
+### how to fix this while looop
+so what we can do is, 
+wkt we get another callback called on_llm_end() which basically signals when the LLm is done giving us the response
+so we can do is, in this fn, we can add a special character to the queue
+and in the chain, if the token is this special char, then break and exit the fn
+```python
+from queue import Queue
+
+queue = Queue()
+class StreamingHandler(BaseCallbackHandler):
+	def on_llm_new_token(self, token, **kwargs):
+		queue.put(token)
+
+	def on_llm_end(self, response, **kwargs):
+		queue.put(None)
+
+	def on_llm_error(self, error: BaseException, *, run_id: UUID, parent_run_id: UUID | None = None, **kwargs: Any) -> Any:
+		queue.put(None)
+
+class StreamingChain(LLMChain):
+	def stream(self, input):
+		def task():
+			self(input)
+	
+		Thread(target=task).start() #telling the thread to start immediately
+		while True:
+			token = queue.get()
+			if token is None:
+				break
+			yield token
+
+
+chain = StreamingChain(
+	prompt=prompt,
+	llm=chat
+)
+
+for output in chain.stream(input={"content":"tell me a joke"}):
+	print(output)
+```
+
+
+## extending langchain
+now with the above logic, we are creating 1 instance of a queue and 1 instance of StreamingHandler() so then that would mean all of our users will share these resources
+
+so whenever we call the stream fn() were going to create a new queue and a new StreamingHandler()
+
+so how do we do that?
+```python
+from typing import Any, Dict, Iterator
+from uuid import UUID
+from langchain.chat_models import ChatOpenAI
+from langchain.prompts import ChatPromptTemplate
+from langchain.chains import LLMChain
+from langchain.callbacks.base import BaseCallbackHandler
+from dotenv import load_dotenv
+from queue import Queue
+from threading import Thread
+
+load_dotenv()
+
+class StreamingHandler(BaseCallbackHandler):
+	def __init__(self, queue) -> None:
+		self.queue = queue
+	
+	def on_llm_new_token(self, token, **kwargs):
+		self.queue.put(token)
+	
+	def on_llm_end(self, response, **kwargs):
+		self.queue.put(None)
+	
+	def on_llm_error(self, error: BaseException, *, run_id: UUID, parent_run_id: UUID | None = None, **kwargs: Any) -> Any:
+		self.queue.put(None)
+
+
+chat = ChatOpenAI(
+	streaming=True,
+)
+
+prompt = ChatPromptTemplate.from_messages([
+	("human", "{content}")
+])
+
+class StreamingChain(LLMChain):
+
+	def stream(self, input):
+		queue = Queue()
+		handler = StreamingHandler(queue)
+		def task():
+			self(input, callbacks=[handler])
+		
+		Thread(target=task).start() #telling the thread to start immediately
+		while True:
+			token = queue.get()
+			if token is None:
+				break
+			yield token
+
+
+chain = StreamingChain(
+	prompt=prompt,
+	llm=chat
+)
+
+for output in chain.stream(input={"content": "tell me a joke"}):
+	print(output)
+```
+
+so instead of passing the callback fns in the declaration of ChatOpenAI, we first declare a new queue in the stream fn, along with a new instance of the handler
+we then, pass this queue as a param to the class and we store all the chunks in this queue
+
+and when we pass the input in the self() call, we also pass the handlers here
+
+### using mixins
+so, now in the above snippet you can see that StreamingChain extends LLMChain, but what if tomorrow we want to incorporate streaming for a ConvoRetrievalChain?
+we  have to again define a new class extending ConvoRetrievalChain, define the stream fn and so on right? its just extra work
+
+so how do we tackle this?
+```python
+from typing import Any, Dict, Iterator
+from uuid import UUID
+from langchain.chat_models import ChatOpenAI
+from langchain.prompts import ChatPromptTemplate
+from langchain.chains import LLMChain
+from langchain.callbacks.base import BaseCallbackHandler
+from dotenv import load_dotenv
+from queue import Queue
+from threading import Thread
+
+load_dotenv()
+
+class StreamingHandler(BaseCallbackHandler):
+	def __init__(self, queue) -> None:
+		self.queue = queue
+	
+	def on_llm_new_token(self, token, **kwargs):
+		self.queue.put(token)
+	
+	def on_llm_end(self, response, **kwargs):
+		self.queue.put(None)
+	
+	def on_llm_error(self, error, **kwargs):
+		self.queue.put(None)
+
+
+chat = ChatOpenAI(
+	streaming=True,
+)
+
+prompt = ChatPromptTemplate.from_messages([
+	("human", "{content}")
+])
+
+class StreamableChain:
+	def stream(self, input):
+		queue = Queue()
+		handler = StreamingHandler(queue)
+		def task():
+			self(input, callbacks=[handler])
+		
+		Thread(target=task).start() #telling the thread to start immediately
+		while True:
+			token = queue.get()
+			if token is None:
+				break
+			yield token
+
+class StreamingChain(StreamableChain, LLMChain):
+	pass
+
+chain = StreamingChain(
+	prompt=prompt,
+	llm=chat
+)
+
+for output in chain.stream(input={"content": "tell me a joke"}):
+	print(output)
+```
+
+so this way, if we want to use a ConvoRetrievalChain, we can just do `class StreamingChain(StreamableChain, ConversationalRetrievalChain):` and move on
+
+
